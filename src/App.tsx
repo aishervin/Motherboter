@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { 
   Bot, Settings, Send, RefreshCw, Copy, Check, Download, 
-  Terminal, Code, Play, CheckCircle2, X, Github, Sparkles
+  Terminal, Code, Play, CheckCircle2, X, Github, Sparkles, Cloud
 } from "lucide-react";
 
 interface AgentBlock {
@@ -56,16 +56,18 @@ export default {
   },
 };`);
 
-  // Credentials
+  // Credentials (Keys only, no repo name here!)
   const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem("mb_gemini_key") || "");
   const [githubToken, setGithubToken] = useState(() => localStorage.getItem("mb_gh_token") || "");
   const [githubUser, setGithubUser] = useState(() => localStorage.getItem("mb_gh_user") || "");
   const [cfToken, setCfToken] = useState(() => localStorage.getItem("mb_cf_token") || "cfat_UE80AKq3LeBNdFq1NedtZPKmry3u10C0oWHF8GkP682c91ea");
   const [cfAccount, setCfAccount] = useState(() => localStorage.getItem("mb_cf_acc") || "95db3c31158d3696452081a727e1104a");
   const [tgToken, setTgToken] = useState(() => localStorage.getItem("mb_tg_token") || "");
-  const [repoName, setRepoName] = useState(() => localStorage.getItem("mb_repo_name") || "motherbot-worker");
 
+  // Deploying state tracking
   const [deployStatus, setDeployStatus] = useState<{ [key: string]: 'idle' | 'deploying' | 'success' | 'error' }>({});
+  const [deployRepoNames, setDeployRepoNames] = useState<{ [key: string]: string }>({});
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -119,7 +121,7 @@ export default {
       let resultData: { message: string; blocks?: AgentBlock[] };
 
       const systemPrompt = `You are Motherboter AI Agent, an autonomous Telegram Bot engineer using 'grammY' framework on Cloudflare Workers.
-Communicate naturally and concisely in Persian. Do NOT write unnecessary tutorials or essays.
+Communicate naturally and concisely in Persian.
 Respond STRICTLY with valid JSON:
 {
   "message": "پاسخ کوتاه و مرتبط به فارسی",
@@ -185,13 +187,14 @@ Respond STRICTLY with valid JSON:
     }
   };
 
-  // Deploy to GitHub
+  // Deploy to GitHub (Asking repo name at deploy time!)
   const executeDeployBlock = async (blockKey: string, customRepo?: string) => {
     if (!githubToken.trim()) {
       setSettingsOpen(true);
       return;
     }
 
+    const finalRepoName = (deployRepoNames[blockKey] || customRepo || "motherbot-worker").trim();
     setDeployStatus(prev => ({ ...prev, [blockKey]: 'deploying' }));
 
     try {
@@ -207,22 +210,20 @@ Respond STRICTLY with valid JSON:
       setGithubUser(username);
       localStorage.setItem("mb_gh_user", username);
 
-      const targetRepo = customRepo || repoName;
-
       await fetch("https://api.github.com/user/repos", {
         method: "POST",
         headers,
-        body: JSON.stringify({ name: targetRepo, private: true, auto_init: true })
+        body: JSON.stringify({ name: finalRepoName, private: true, auto_init: true })
       });
 
       const commitFile = async (path: string, content: string) => {
         let sha: string | undefined;
-        const check = await fetch(`https://api.github.com/repos/${username}/${targetRepo}/contents/${path}`, { headers });
+        const check = await fetch(`https://api.github.com/repos/${username}/${finalRepoName}/contents/${path}`, { headers });
         if (check.ok) {
           const info = await check.json();
           sha = info.sha;
         }
-        await fetch(`https://api.github.com/repos/${username}/${targetRepo}/contents/${path}`, {
+        await fetch(`https://api.github.com/repos/${username}/${finalRepoName}/contents/${path}`, {
           method: "PUT",
           headers,
           body: JSON.stringify({
@@ -234,16 +235,16 @@ Respond STRICTLY with valid JSON:
       };
 
       await commitFile("src/index.ts", activeCode);
-      await commitFile("wrangler.toml", `name = "${targetRepo}"\nmain = "src/index.ts"\ncompatibility_date = "2026-03-01"\n`);
+      await commitFile("wrangler.toml", `name = "${finalRepoName}"\nmain = "src/index.ts"\ncompatibility_date = "2026-03-01"\n`);
       await commitFile("package.json", JSON.stringify({
-        name: targetRepo,
+        name: finalRepoName,
         version: "1.0.0",
         private: true,
         dependencies: { grammy: "^1.35.0" }
       }, null, 2));
 
       setDeployStatus(prev => ({ ...prev, [blockKey]: 'success' }));
-      addAgentMessage(`پروژه با موفقیت دیپلوی شد: github.com/${username}/${targetRepo}`);
+      addAgentMessage(`پروژه با موفقیت دیپلوی شد:\nhttps://github.com/${username}/${finalRepoName}`);
     } catch (err: any) {
       setDeployStatus(prev => ({ ...prev, [blockKey]: 'error' }));
       addAgentMessage(`خطا در دیپلوی: ${err.message}`);
@@ -265,7 +266,7 @@ Respond STRICTLY with valid JSON:
         <button 
           onClick={() => setSettingsOpen(true)}
           className="p-1.5 rounded-lg bg-[#12141c] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors cursor-pointer"
-          title="تنظیمات"
+          title="تنظیمات و کلیدها"
         >
           <Settings className="w-4 h-4" />
         </button>
@@ -280,7 +281,7 @@ Respond STRICTLY with valid JSON:
               <Bot className="w-6 h-6" />
             </div>
             <h2 className="text-base md:text-lg font-bold text-white mb-1.5">چه رباتی می‌خواهید بسازید؟</h2>
-            <p className="text-xs text-slate-400 max-w-xs">ایده یا نیازمندی خود را بنویسید تا سورس‌کد، تست و استقرار آن آغاز شود.</p>
+            <p className="text-xs text-slate-400 max-w-xs">ایده خود را بنویسید تا کد ربات تولید، تست و مستقر شود.</p>
           </div>
         ) : (
           messages.map((msg) => (
@@ -386,47 +387,66 @@ Respond STRICTLY with valid JSON:
                   return <InlineSimulator key={idx} botName={block.botName} welcome={block.welcome} code={activeCode} />;
                 }
 
-                // 4. INLINE DEPLOY ACTION
+                // 4. INLINE DEPLOY ACTION (Ask repo name right here!)
                 if (block.type === 'deploy') {
                   const status = deployStatus[blockKey] || 'idle';
+                  const currentRepoInput = deployRepoNames[blockKey] !== undefined ? deployRepoNames[blockKey] : (block.repoName || 'motherbot-worker');
+
                   return (
-                    <div key={idx} className="w-full bg-[#10121a] border border-slate-800 rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
-                      <div>
-                        <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                          آماده دیپلوی
-                        </h4>
-                        <p className="text-[11px] text-slate-400 mt-0.5">{block.summary || 'استقرار روی گیت‌هاب و لبه ابری کلودفلر'}</p>
+                    <div key={idx} className="w-full bg-[#10121a] border border-slate-800 rounded-xl p-3.5 flex flex-col gap-3 shadow-md">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                            آماده استقرار و دیپلوی
+                          </h4>
+                          <p className="text-[11px] text-slate-400 mt-0.5">{block.summary || 'ایجاد ریپازیتوری در گیت‌هاب و فعال‌سازی در ورکرز'}</p>
+                        </div>
                       </div>
 
-                      <button 
-                        onClick={() => executeDeployBlock(blockKey, block.repoName)}
-                        disabled={status === 'deploying' || status === 'success'}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                          status === 'success'
-                            ? 'bg-emerald-600 text-white'
-                            : status === 'deploying'
-                            ? 'bg-indigo-700 text-white opacity-80'
-                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow'
-                        }`}
-                      >
-                        {status === 'deploying' ? (
-                          <>
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            <span>در حال ارسال...</span>
-                          </>
-                        ) : status === 'success' ? (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>دیپلوی شد ✓</span>
-                          </>
-                        ) : (
-                          <>
-                            <Github className="w-3.5 h-3.5" />
-                            <span>دیپلوی به گیت‌هاب</span>
-                          </>
-                        )}
-                      </button>
+                      {/* Repostiory name prompt right at deploy time! */}
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1 border-t border-slate-800/60">
+                        <div className="flex-1 flex items-center bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs">
+                          <span className="text-slate-400 text-[11px] shrink-0 ml-2">نام مخزن گیت‌هاب:</span>
+                          <input 
+                            type="text"
+                            dir="ltr"
+                            value={currentRepoInput}
+                            onChange={e => setDeployRepoNames(prev => ({ ...prev, [blockKey]: e.target.value }))}
+                            placeholder="motherbot-worker"
+                            className="bg-transparent text-white font-mono text-xs flex-1 focus:outline-none"
+                          />
+                        </div>
+
+                        <button 
+                          onClick={() => executeDeployBlock(blockKey, currentRepoInput)}
+                          disabled={status === 'deploying' || status === 'success'}
+                          className={`px-4 py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer ${
+                            status === 'success'
+                              ? 'bg-emerald-600 text-white'
+                              : status === 'deploying'
+                              ? 'bg-indigo-700 text-white opacity-80'
+                              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow'
+                          }`}
+                        >
+                          {status === 'deploying' ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              <span>در حال ارسال...</span>
+                            </>
+                          ) : status === 'success' ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>دیپلوی شد ✓</span>
+                            </>
+                          ) : (
+                            <>
+                              <Github className="w-3.5 h-3.5" />
+                              <span>تایید و ساخت مخزن</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   );
                 }
@@ -448,44 +468,44 @@ Respond STRICTLY with valid JSON:
         <div ref={messagesEndRef} />
       </main>
 
-      {/* 3. PROMPT INPUT BAR */}
+      {/* 3. PROMPT INPUT BAR (Send button conveniently positioned) */}
       <div className="fixed bottom-0 left-0 right-0 p-3 bg-[#07080b]/95 border-t border-slate-800 backdrop-blur-md z-20">
-        <div className="max-w-3xl w-full mx-auto flex items-center gap-2">
+        <div className="max-w-3xl w-full mx-auto relative flex items-center">
           <input 
             type="text"
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
             placeholder="مثلاً: ربات ارسال قیمت لحظه‌ای طلا و ارز بساز..."
-            className="flex-1 bg-[#10121a] border border-slate-800 rounded-xl px-4 py-2.5 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            className="w-full bg-[#10121a] border border-slate-800 rounded-xl pr-4 pl-14 py-3 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
           <button 
             onClick={handleSendMessage}
             disabled={loading || !input.trim()}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-medium transition-colors disabled:opacity-40 shrink-0 flex items-center gap-1.5 cursor-pointer"
+            className="absolute left-2 top-1.5 bottom-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-center gap-1 cursor-pointer"
           >
-            {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             <span className="hidden sm:inline">ارسال</span>
           </button>
         </div>
       </div>
 
-      {/* 4. SETTINGS MODAL */}
+      {/* 4. SETTINGS MODAL (Keys only: Gemini, GitHub, Cloudflare, Telegram) */}
       {settingsOpen && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-3">
           <div className="bg-[#0f1118] border border-slate-800 rounded-2xl max-w-md w-full p-4 flex flex-col gap-3.5 max-h-[90vh] overflow-y-auto text-xs">
             
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <h3 className="font-bold text-white">تنظیمات و کلیدها</h3>
+              <h3 className="font-bold text-white">تنظیمات و کلیدهای ارتباطی</h3>
               <button onClick={() => setSettingsOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Gemini */}
+            {/* 1. Gemini */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-slate-300 font-medium">کلید Gemini</label>
+                <label className="text-slate-300 font-medium">کلید Gemini API</label>
                 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[10px] text-indigo-400 hover:underline">
                   دریافت کلید
                 </a>
@@ -503,7 +523,7 @@ Respond STRICTLY with valid JSON:
               />
             </div>
 
-            {/* GitHub */}
+            {/* 2. GitHub */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-slate-300 font-medium">حساب گیت‌هاب</label>
@@ -531,27 +551,52 @@ Respond STRICTLY with valid JSON:
                   setGithubToken(e.target.value);
                   localStorage.setItem("mb_gh_token", e.target.value.trim());
                 }}
-                placeholder="یا توکن: ghp_..."
+                placeholder="یا توکن دسترسی: ghp_..."
                 className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none"
               />
             </div>
 
-            {/* Repo Name */}
+            {/* 3. Cloudflare (RESTORED!) */}
             <div>
-              <label className="block text-slate-300 font-medium mb-1">نام مخزن در گیت‌هاب</label>
-              <input 
-                type="text"
-                dir="ltr"
-                value={repoName}
-                onChange={e => {
-                  setRepoName(e.target.value);
-                  localStorage.setItem("mb_repo_name", e.target.value.trim());
-                }}
-                className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-slate-300 font-medium flex items-center gap-1.5">
+                  <Cloud className="w-3.5 h-3.5 text-amber-400" />
+                  حساب کلودفلر (Cloudflare Workers)
+                </label>
+              </div>
+              <div className="flex flex-col gap-2">
+                <div>
+                  <span className="text-[10px] text-slate-500 block mb-0.5">Cloudflare API Token</span>
+                  <input 
+                    type="password"
+                    dir="ltr"
+                    value={cfToken}
+                    onChange={e => {
+                      setCfToken(e.target.value);
+                      localStorage.setItem("mb_cf_token", e.target.value.trim());
+                    }}
+                    placeholder="cfat_..."
+                    className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 block mb-0.5">Account ID</span>
+                  <input 
+                    type="text"
+                    dir="ltr"
+                    value={cfAccount}
+                    onChange={e => {
+                      setCfAccount(e.target.value);
+                      localStorage.setItem("mb_cf_acc", e.target.value.trim());
+                    }}
+                    placeholder="95db3c3..."
+                    className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none"
+                  />
+                </div>
+              </div>
             </div>
 
-            {/* Telegram Bot Token */}
+            {/* 4. Telegram Bot Token */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-slate-300 font-medium">توکن تلگرام (اختیاری)</label>
