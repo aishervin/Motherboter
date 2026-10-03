@@ -1,26 +1,24 @@
 import React, { useState, useRef, useEffect } from "react";
 import { 
-  Bot, Github, Cloud, Terminal, CheckCircle2, Sparkles, 
-  Code, RefreshCw, Send, Copy, Check, Download, 
-  Settings, Zap, ExternalLink, Smartphone, Activity,
-  Sliders, X, ChevronRight, Lock, Key, AlertCircle, Trash2
+  Bot, Github, Terminal, Code, RefreshCw, Send, Copy, Check, 
+  Download, Settings, Zap, Smartphone, X, ExternalLink, Play, CheckCircle
 } from "lucide-react";
 
-interface LogItem {
+const GITHUB_CLIENT_ID = "Ov23liRlVQJ53msMFK4d";
+
+interface LogMessage {
   id: string;
-  type: 'user' | 'agent' | 'system' | 'code' | 'error';
-  title?: string;
+  sender: 'user' | 'agent' | 'system';
   text: string;
-  timestamp: string;
-  details?: string[];
+  time: string;
 }
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'console' | 'code' | 'preview'>('console');
+  const [tab, setTab] = useState<'console' | 'code' | 'preview'>('console');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Settings & Credentials (stored in localStorage)
+  // Credentials
   const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem("mb_gemini_key") || "");
   const [githubToken, setGithubToken] = useState(() => localStorage.getItem("mb_gh_token") || "");
   const [githubUser, setGithubUser] = useState(() => localStorage.getItem("mb_gh_user") || "");
@@ -29,25 +27,21 @@ export default function App() {
   const [tgToken, setTgToken] = useState(() => localStorage.getItem("mb_tg_token") || "");
   const [repoName, setRepoName] = useState(() => localStorage.getItem("mb_repo_name") || "motherbot-worker");
 
-  // Code state
+  // Code
   const [code, setCode] = useState(`import { Bot, webhookCallback } from "grammy";
 
 const bot = new Bot(process.env.BOT_TOKEN || "");
 
 bot.command("start", async (ctx) => {
-  await ctx.reply("سلام! ربات شما روی Cloudflare Workers با موفقیت فعال شد. 🚀\\n\\nدستورات فعال:\\n/start - شروع\\n/help - راهنما\\n/ping - پینگ و وضعیت");
+  await ctx.reply("سلام! ربات تلگرام شما فعال است.\\n\\nدستورات:\\n/start - شروع\\n/help - راهنما");
 });
 
 bot.command("help", async (ctx) => {
-  await ctx.reply("این ربات با هوش مصنوعی و بر بستر grammY توسعه داده شده است.");
-});
-
-bot.command("ping", async (ctx) => {
-  await ctx.reply("پونگ! سرورهای لبه کلودفلر آنلاین هستند. 🟢");
+  await ctx.reply("راهنمای ربات:\\nاین ربات روی Cloudflare Workers مستقر شده است.");
 });
 
 bot.on("message:text", async (ctx) => {
-  await ctx.reply(\`پیام شما: \${ctx.message.text}\`);
+  await ctx.reply(\`پیام شما دریافت شد: \${ctx.message.text}\`);
 });
 
 export default {
@@ -57,29 +51,23 @@ export default {
 };`);
 
   const [copied, setCopied] = useState(false);
-  const [userInput, setUserInput] = useState("");
+  const [prompt, setPrompt] = useState("");
 
-  // Live simulator chat
-  const [simChat, setSimChat] = useState<Array<{ sender: 'user' | 'bot'; text: string }>>([
-    { sender: 'bot', text: 'سلام! ربات تلگرام آماده پاسخگویی است. دستوری مثل /start را تست کنید.' }
-  ]);
-  const [simText, setSimText] = useState("");
-
-  // Console Logs & Timeline
-  const [logs, setLogs] = useState<LogItem[]>([
+  // Logs
+  const [logs, setLogs] = useState<LogMessage[]>([
     {
-      id: 'init-1',
-      type: 'system',
-      title: 'سیستم آماده به کار',
-      text: 'محیط توسعه Motherboter با موفقیت راه‌اندازی شد. هوش مصنوعی و ماژول‌های ابری آماده پردازش هستند.',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      details: [
-        'Cloudflare Workers SDK: متصل',
-        'grammY Framework: v1.35.0 آماده',
-        'موتور پردازشگر: Google Gemini Flash'
-      ]
+      id: '1',
+      sender: 'system',
+      text: 'محیط توسعه آماده است. دستور ساخت یا تغییر ربات را بنویسید.',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
+
+  // Simulator
+  const [simMessages, setSimMessages] = useState<Array<{ sender: 'user' | 'bot'; text: string }>>([
+    { sender: 'bot', text: 'سلام! ربات تلگرام شما فعال است.\n\nدستورات:\n/start - شروع\n/help - راهنما' }
+  ]);
+  const [simInput, setSimInput] = useState("");
 
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -87,8 +75,15 @@ export default {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  // Initial GitHub check if token exists
+  // Handle GitHub OAuth callback code
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const codeParam = params.get('code');
+    if (codeParam) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      addLog('system', 'کد گیت‌هاب دریافت شد. در حال اتصال...');
+    }
+
     if (githubToken && !githubUser) {
       fetch("https://api.github.com/user", {
         headers: { "Authorization": `Bearer ${githubToken.trim()}` }
@@ -104,168 +99,137 @@ export default {
     }
   }, []);
 
-  const addLog = (type: LogItem['type'], text: string, title?: string, details?: string[]) => {
-    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setLogs(prev => [
-      ...prev,
-      { id: Math.random().toString(36).substring(2, 9), type, text, title, timestamp, details }
-    ]);
+  const addLog = (sender: LogMessage['sender'], text: string) => {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setLogs(prev => [...prev, { id: Math.random().toString(36).substring(2, 9), sender, text, time }]);
   };
 
-  // 1. Direct AI Execution (Fully Works in Browser & Server)
-  const handleExecuteAI = async () => {
-    const prompt = userInput.trim();
-    if (!prompt || isProcessing) return;
+  // Direct 1-Click GitHub OAuth
+  const handleGithubOAuth = () => {
+    const redirectUri = window.location.origin + window.location.pathname;
+    window.location.href = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo,workflow`;
+  };
 
-    setUserInput("");
-    setIsProcessing(true);
-    addLog('user', prompt);
+  // Execute AI Request
+  const handleSendPrompt = async () => {
+    const text = prompt.trim();
+    if (!text || loading) return;
 
-    addLog('system', 'در حال پردازش درخواست...', 'موتور هوش مصنوعی', [
-      'بررسی کلید اعتبارسنجی Google Gemini...',
-      'ارسال پرامپت مهندسی شده به مدل...',
-      'در انتظار پاسخ مدل...'
-    ]);
+    setPrompt("");
+    setLoading(true);
+    addLog('user', text);
+    addLog('system', 'در حال پردازش با هوش مصنوعی...');
 
     try {
       let resultData: { reply: string; code?: string };
 
-      // Direct Client-Side Gemini Call (CORS supported, works 100% on Cloudflare Pages)
       if (geminiKey.trim()) {
-        const cleanKey = geminiKey.trim();
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${cleanKey}`;
-        
-        const systemPrompt = `You are an expert Telegram bot developer using 'grammY' framework on Cloudflare Workers.
-User instruction: "${prompt}"
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey.trim()}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: `You are an expert Telegram bot developer using 'grammY' framework on Cloudflare Workers.
+User instruction: "${text}"
 Current bot code:
 \`\`\`ts
 ${code}
 \`\`\`
 
-Generate complete, production-ready TypeScript code.
-Output MUST be strict JSON:
+Respond ONLY with valid JSON:
 {
-  "reply": "توضیح کوتاه و تمیز فارسی درباره قابلیت اضافه شده",
-  "code": "complete typescript code here"
-}`;
-
-        const aiRes = await fetch(apiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: systemPrompt }] }],
+  "reply": "توضیح کوتاه تغییرات",
+  "code": "/* کامل سورس کد تایپ‌اسکریپت */"
+}`
+              }]
+            }],
             generationConfig: { responseMimeType: "application/json" }
           })
         });
 
-        if (!aiRes.ok) {
-          const errBody = await aiRes.json();
-          throw new Error(errBody.error?.message || `خطای API جمینی (${aiRes.status})`);
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error?.message || "خطا در ارتباط با هوش مصنوعی");
         }
 
-        const aiJson = await aiRes.json();
-        const rawOutput = aiJson.candidates?.[0]?.content?.parts?.[0]?.text;
-        resultData = JSON.parse(rawOutput);
+        const data = await res.json();
+        const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        resultData = JSON.parse(raw);
       } else {
-        // Fallback to local server proxy
-        const serverRes = await fetch("/api/generate-bot", {
+        const res = await fetch("/api/generate-bot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: prompt, currentCode: code })
+          body: JSON.stringify({ message: text, currentCode: code })
         });
-
-        if (!serverRes.ok) {
-          throw new Error("لطفاً کلید هوش مصنوعی جمینی خود را در بخش تنظیمات ⚙️ وارد کنید.");
-        }
-        resultData = await serverRes.json();
+        if (!res.ok) throw new Error("کلید جمینی را در بخش تنظیمات وارد کنید.");
+        resultData = await res.json();
       }
 
-      // Update code
-      if (resultData.code && resultData.code.trim()) {
+      if (resultData.code) {
         setCode(resultData.code);
-        addLog('code', 'سورس‌کد با موفقیت بازنویسی و سینتکس جدید اعمال شد.', 'کامپایل کدهای ربات', [
-          'بررسی ساختار توابع و دستورات grammY: تایید شد ✓',
-          'سازگاری با ورکرز و محیط بدون سرور: تایید شد ✓',
-          'آماده استقرار و اجرا روی لبه'
-        ]);
+        addLog('system', 'کد ربات به‌روزرسانی شد.');
       }
-
-      addLog('agent', resultData.reply || 'تغییرات با موفقیت در پروژه اعمال شد.');
+      if (resultData.reply) {
+        addLog('agent', resultData.reply);
+      }
     } catch (err: any) {
-      addLog('error', err.message || 'خطا در ارتباط با هوش مصنوعی', 'خطای پردازش', [
-        'بررسی کنید که کلید جمینی معتبر باشد.',
-        'می‌توانید کلید جدید را از تنظیمات ⚙️ وارد کنید.'
-      ]);
+      addLog('system', `خطا: ${err.message}`);
     } finally {
-      setIsProcessing(false);
+      setLoading(false);
     }
   };
 
-  // 2. Direct Deploy to GitHub
-  const handleDeployToGitHub = async () => {
+  // Direct GitHub Deploy
+  const handleDeploy = async () => {
     if (!githubToken.trim()) {
       setSettingsOpen(true);
-      addLog('error', 'برای دیپلوی باید توکن دسترسی گیت‌هاب را در تنظیمات وارد کنید.', 'نیاز به احراز هویت');
+      addLog('system', 'برای دیپلوی، ابتدا به گیت‌هاب متصل شوید.');
       return;
     }
 
-    setIsProcessing(true);
-    addLog('system', 'شروع فرآیند استقرار مستقیم روی گیت‌هاب...', 'دیپلوی خودکار', [
-      'بررسی توکن دسترسی کاربر...',
-      `ساخت یا بررسی ریپازیتوری ${repoName}...`,
-      'آماده‌سازی فایل‌های wrangler.toml و package.json...'
-    ]);
+    setLoading(true);
+    addLog('system', 'در حال ارسال کد به گیت‌هاب...');
 
     try {
       const headers = {
         "Authorization": `Bearer ${githubToken.trim()}`,
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "Motherboter-Deployer"
+        "Accept": "application/vnd.github+json"
       };
 
-      // 1. Get user profile
       const userRes = await fetch("https://api.github.com/user", { headers });
-      if (!userRes.ok) throw new Error("توکن گیت‌هاب نامعتبر است یا دسترسی repo ندارد.");
+      if (!userRes.ok) throw new Error("توکن گیت‌هاب معتبر نیست.");
       const userData = await userRes.json();
       const username = userData.login;
       setGithubUser(username);
       localStorage.setItem("mb_gh_user", username);
 
-      // 2. Ensure repo exists
-      addLog('system', `ایجاد ریپازیتوری پرایوت "${repoName}" در حساب @${username}...`);
       await fetch("https://api.github.com/user/repos", {
         method: "POST",
         headers,
-        body: JSON.stringify({
-          name: repoName,
-          description: "Telegram Bot deployed with Motherboter Studio",
-          private: true,
-          auto_init: true
-        })
+        body: JSON.stringify({ name: repoName, private: true, auto_init: true })
       });
 
-      // Helper to commit file
-      const commitFile = async (path: string, content: string) => {
+      const commitFile = async (filePath: string, fileContent: string) => {
         let sha: string | undefined;
-        const checkRes = await fetch(`https://api.github.com/repos/${username}/${repoName}/contents/${path}`, { headers });
-        if (checkRes.ok) {
-          const fileInfo = await checkRes.json();
-          sha = fileInfo.sha;
+        const check = await fetch(`https://api.github.com/repos/${username}/${repoName}/contents/${filePath}`, { headers });
+        if (check.ok) {
+          const info = await check.json();
+          sha = info.sha;
         }
-        await fetch(`https://api.github.com/repos/${username}/${repoName}/contents/${path}`, {
+        await fetch(`https://api.github.com/repos/${username}/${repoName}/contents/${filePath}`, {
           method: "PUT",
           headers,
           body: JSON.stringify({
-            message: `chore: update ${path} via Motherboter`,
-            content: btoa(unescape(encodeURIComponent(content))),
+            message: `chore: update ${filePath}`,
+            content: btoa(unescape(encodeURIComponent(fileContent))),
             sha
           })
         });
       };
 
-      // Commit essential worker files
       await commitFile("src/index.ts", code);
-      await commitFile("README.md", `# ${repoName}\n\nAutomated Telegram Bot created via Motherboter Studio.`);
       await commitFile("wrangler.toml", `name = "${repoName}"\nmain = "src/index.ts"\ncompatibility_date = "2026-03-01"\n`);
       await commitFile("package.json", JSON.stringify({
         name: repoName,
@@ -274,177 +238,146 @@ Output MUST be strict JSON:
         dependencies: { grammy: "^1.35.0" }
       }, null, 2));
 
-      addLog('system', `تمام فایل‌ها با موفقیت روی گیت‌هاب قرار گرفتند: https://github.com/${username}/${repoName}`, 'دیپلوی موفقیت‌آمیز ✓', [
-        `ریپازیتوری: github.com/${username}/${repoName}`,
-        'فایل سورس: src/index.ts',
-        'پیکربندی: wrangler.toml',
-        'وابستگی‌ها: grammY'
-      ]);
+      addLog('system', `پروژه با موفقیت دیپلوی شد: github.com/${username}/${repoName}`);
     } catch (err: any) {
-      addLog('error', err.message || 'خطا در برقراری ارتباط با گیت‌هاب', 'خطای دیپلوی');
+      addLog('system', `خطای دیپلوی: ${err.message}`);
     } finally {
-      setIsProcessing(false);
+      setLoading(false);
     }
   };
 
-  // Simulator interaction
+  // Simulator send
   const handleSimSend = () => {
-    if (!simText.trim()) return;
-    const msg = simText.trim();
-    setSimChat(prev => [...prev, { sender: 'user', text: msg }]);
-    setSimText("");
+    if (!simInput.trim()) return;
+    const msg = simInput.trim();
+    setSimMessages(prev => [...prev, { sender: 'user', text: msg }]);
+    setSimInput("");
 
     setTimeout(() => {
-      let reply = `پیام دریافت شد: ${msg}`;
-      if (msg === "/start") reply = "سلام! ربات شما روی Cloudflare Workers با موفقیت فعال شد. 🚀\n\nدستورات فعال:\n/start - شروع\n/help - راهنما\n/ping - پینگ و وضعیت";
-      else if (msg === "/help") reply = "این ربات با هوش مصنوعی و بر بستر grammY توسعه داده شده است.";
-      else if (msg === "/ping") reply = "پونگ! سرورهای لبه کلودفلر آنلاین هستند. 🟢";
-
-      setSimChat(prev => [...prev, { sender: 'bot', text: reply }]);
-    }, 300);
+      let reply = `پاسخ به: ${msg}`;
+      if (msg === "/start") reply = "سلام! ربات تلگرام شما فعال است.\n\nدستورات:\n/start - شروع\n/help - راهنما";
+      else if (msg === "/help") reply = "راهنمای ربات:\nاین ربات روی Cloudflare Workers مستقر شده است.";
+      setSimMessages(prev => [...prev, { sender: 'bot', text: reply }]);
+    }, 250);
   };
 
   return (
-    <div className="min-h-screen bg-[#06070a] text-slate-200 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
+    <div className="min-h-screen bg-[#07080b] text-slate-200 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
       
-      {/* 1. COMPACT, ULTRA-CLEAN HEADER (h-12) */}
-      <header className="h-12 border-b border-slate-800/80 bg-[#090b10] px-3 md:px-5 flex items-center justify-between shrink-0 z-30">
+      {/* 1. CLEAN TOP HEADER */}
+      <header className="h-12 border-b border-slate-800 bg-[#0b0c11] px-3 md:px-4 flex items-center justify-between shrink-0 z-30">
         
         {/* Brand */}
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow">
+          <div className="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
             <Bot className="w-3.5 h-3.5" />
           </div>
-          <span className="font-bold text-xs md:text-sm text-white tracking-tight">Motherboter</span>
-          <span className="text-[9px] font-mono text-indigo-400 bg-indigo-500/10 px-1.5 py-0.2 rounded border border-indigo-500/20 hidden sm:inline">
-            SHΞN™
-          </span>
+          <span className="font-bold text-xs md:text-sm text-white">Motherboter</span>
         </div>
 
-        {/* View Switcher (Segmented Control) */}
-        <div className="flex items-center bg-[#11131a] p-0.5 rounded-lg border border-slate-800">
+        {/* Center Tabs */}
+        <div className="flex items-center bg-[#13151d] p-0.5 rounded-lg border border-slate-800 text-xs">
           <button 
-            onClick={() => setCurrentView('console')}
-            className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
-              currentView === 'console' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-            }`}
+            onClick={() => setTab('console')}
+            className={`px-3 py-1 rounded-md transition-colors ${tab === 'console' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
           >
-            <Terminal className="w-3 h-3" />
-            <span className="hidden xs:inline">کنسول و مانیتور</span>
-            <span className="xs:hidden">کنسول</span>
+            کنسول
           </button>
-
           <button 
-            onClick={() => setCurrentView('code')}
-            className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
-              currentView === 'code' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-            }`}
+            onClick={() => setTab('code')}
+            className={`px-3 py-1 rounded-md transition-colors ${tab === 'code' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
           >
-            <Code className="w-3 h-3" />
-            <span>کد</span>
+            کد
           </button>
-
           <button 
-            onClick={() => setCurrentView('preview')}
-            className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
-              currentView === 'preview' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-            }`}
+            onClick={() => setTab('preview')}
+            className={`px-3 py-1 rounded-md transition-colors ${tab === 'preview' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-white'}`}
           >
-            <Smartphone className="w-3 h-3" />
-            <span>تست</span>
+            تست
           </button>
         </div>
 
-        {/* Action Controls */}
+        {/* Right Actions: Direct GitHub Connect & Settings */}
         <div className="flex items-center gap-2">
+          {githubUser ? (
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-[#13151d] border border-emerald-500/30 rounded-lg text-xs font-mono text-emerald-300">
+              <CheckCircle className="w-3 h-3 text-emerald-400" />
+              <span>@{githubUser}</span>
+            </div>
+          ) : (
+            <button 
+              onClick={handleGithubOAuth}
+              className="bg-slate-800 hover:bg-slate-700 text-white text-xs px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 border border-slate-700"
+            >
+              <Github className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">اتصال به گیت‌هاب</span>
+            </button>
+          )}
+
+          <button 
+            onClick={handleDeploy}
+            disabled={loading}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-3 py-1 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50"
+          >
+            {loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+            <span>دیپلوی</span>
+          </button>
+
           <button 
             onClick={() => setSettingsOpen(true)}
-            title="تنظیمات و کلیدها"
-            className="p-1.5 rounded-lg bg-[#11131a] hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-colors relative"
+            className="p-1.5 rounded-lg bg-[#13151d] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors"
+            title="تنظیمات"
           >
-            <Settings className="w-4 h-4 text-indigo-400" />
-            {(!geminiKey || !githubToken) && (
-              <span className="w-2 h-2 rounded-full bg-amber-400 absolute top-0.5 right-0.5"></span>
-            )}
-          </button>
-
-          <button 
-            onClick={handleDeployToGitHub}
-            disabled={isProcessing}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-2.5 md:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
-          >
-            {isProcessing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">دیپلوی گیت‌هاب</span>
-            <span className="sm:hidden">دیپلوی</span>
+            <Settings className="w-3.5 h-3.5" />
           </button>
         </div>
       </header>
 
-      {/* 2. MAIN VIEW AREA (Responsive, mobile friendly) */}
-      <main className="flex-1 flex flex-col overflow-hidden pb-20">
+      {/* 2. MAIN WORKSPACE */}
+      <main className="flex-1 flex flex-col overflow-hidden pb-24">
 
-        {/* VIEW 1: CONSOLE & LIVE LOGS */}
-        {currentView === 'console' && (
-          <div className="flex-1 p-3 md:p-5 overflow-y-auto flex flex-col gap-2.5 max-w-4xl w-full mx-auto font-mono text-xs">
-            
+        {/* TAB 1: CONSOLE */}
+        {tab === 'console' && (
+          <div className="flex-1 p-3 md:p-4 overflow-y-auto flex flex-col gap-2 max-w-3xl w-full mx-auto">
             {logs.map((item) => (
               <div 
-                key={item.id} 
-                className={`p-3 rounded-xl border transition-all ${
-                  item.type === 'user' 
-                    ? 'bg-indigo-950/30 border-indigo-500/30 text-indigo-200 self-end max-w-[90%] md:max-w-2xl font-sans' 
-                    : item.type === 'error'
-                    ? 'bg-rose-950/30 border-rose-500/30 text-rose-300 w-full'
-                    : item.type === 'code'
-                    ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300 w-full'
-                    : item.type === 'system'
-                    ? 'bg-[#0d0f15] border-slate-800 text-slate-300 w-full'
-                    : 'bg-[#10131d] border-indigo-900/40 text-slate-200 w-full font-sans'
+                key={item.id}
+                className={`p-3 rounded-xl border text-xs leading-relaxed ${
+                  item.sender === 'user' 
+                    ? 'bg-indigo-950/40 border-indigo-500/30 text-indigo-100 self-end max-w-[85%]' 
+                    : item.sender === 'system'
+                    ? 'bg-[#0f1118] border-slate-800 text-slate-300 w-full font-mono'
+                    : 'bg-[#12141e] border-slate-800 text-slate-100 w-full'
                 }`}
               >
-                <div className="flex items-center justify-between text-[10px] text-slate-500 pb-1 mb-1 border-b border-white/5">
-                  <span className="font-semibold text-slate-400">
-                    {item.title || (item.type === 'user' ? 'دستور کاربر' : item.type === 'agent' ? 'پاسخ هوش مصنوعی' : 'فرآیند اجرایی')}
-                  </span>
-                  <span>{item.timestamp}</span>
+                <div className="flex items-center justify-between text-[10px] text-slate-500 mb-1">
+                  <span>{item.sender === 'user' ? 'شما' : item.sender === 'system' ? 'سیستم' : 'پاسخ'}</span>
+                  <span>{item.time}</span>
                 </div>
-
-                <div className="leading-relaxed whitespace-pre-line text-xs">{item.text}</div>
-
-                {item.details && item.details.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-white/5 flex flex-col gap-1 text-[11px] text-slate-400">
-                    {item.details.map((detail, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5 text-slate-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></span>
-                        <span>{detail}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div>{item.text}</div>
               </div>
             ))}
-
             <div ref={logsEndRef} />
           </div>
         )}
 
-        {/* VIEW 2: CODE EDITOR */}
-        {currentView === 'code' && (
-          <div className="flex-1 p-3 md:p-5 flex flex-col max-w-4xl w-full mx-auto overflow-hidden">
-            <div className="bg-[#0b0d13] border border-slate-800 rounded-xl flex-1 flex flex-col overflow-hidden shadow-xl">
-              <div className="bg-[#0e1017] px-3 py-2 border-b border-slate-800 flex items-center justify-between text-xs">
-                <span className="font-mono text-slate-400 text-[11px]">src/index.ts (Cloudflare Workers)</span>
+        {/* TAB 2: EDITABLE CODE */}
+        {tab === 'code' && (
+          <div className="flex-1 p-3 md:p-4 flex flex-col max-w-4xl w-full mx-auto overflow-hidden">
+            <div className="bg-[#0b0c12] border border-slate-800 rounded-xl flex-1 flex flex-col overflow-hidden">
+              <div className="bg-[#10121a] px-3 py-2 border-b border-slate-800 flex items-center justify-between text-xs">
+                <span className="font-mono text-slate-400">src/index.ts</span>
                 <div className="flex items-center gap-1.5">
                   <button 
                     onClick={() => {
                       navigator.clipboard.writeText(code);
                       setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
+                      setTimeout(() => setCopied(false), 1500);
                     }}
-                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs flex items-center gap-1 cursor-pointer"
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs flex items-center gap-1"
                   >
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span className="hidden sm:inline">{copied ? 'کپی شد' : 'کپی'}</span>
+                    {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copied ? 'کپی شد' : 'کپی'}</span>
                   </button>
                   <button 
                     onClick={() => {
@@ -454,65 +387,68 @@ Output MUST be strict JSON:
                       a.download = 'index.ts';
                       a.click();
                     }}
-                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs flex items-center gap-1 cursor-pointer"
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs flex items-center gap-1"
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">دانلود</span>
+                    <Download className="w-3 h-3" />
+                    <span>دانلود</span>
                   </button>
                 </div>
               </div>
-              <div className="flex-1 p-3 overflow-y-auto font-mono text-xs text-indigo-200 bg-[#07080c] leading-relaxed">
-                <pre>{code}</pre>
-              </div>
+              <textarea 
+                value={code}
+                onChange={e => setCode(e.target.value)}
+                spellCheck={false}
+                className="flex-1 p-3 bg-transparent text-indigo-200 font-mono text-xs leading-relaxed resize-none focus:outline-none"
+              />
             </div>
           </div>
         )}
 
-        {/* VIEW 3: LIVE TELEGRAM SIMULATOR */}
-        {currentView === 'preview' && (
-          <div className="flex-1 p-3 md:p-5 flex flex-col items-center justify-center max-w-md w-full mx-auto">
-            <div className="w-full bg-[#0b0d13] border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[460px]">
-              <div className="bg-[#0e1017] px-3 py-2.5 border-b border-slate-800 flex items-center justify-between">
+        {/* TAB 3: SIMULATOR */}
+        {tab === 'preview' && (
+          <div className="flex-1 p-3 md:p-4 flex flex-col items-center justify-center max-w-md w-full mx-auto">
+            <div className="w-full bg-[#0b0c12] border border-slate-800 rounded-2xl overflow-hidden flex flex-col h-[440px]">
+              <div className="bg-[#10121a] px-3 py-2 border-b border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-xs">🤖</div>
+                  <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-[10px]">🤖</div>
                   <div>
-                    <h4 className="text-xs font-bold text-white">ربات تلگرام</h4>
-                    <p className="text-[9px] text-emerald-400">آنلاین روی کلودفلر</p>
+                    <h4 className="text-xs font-bold text-white">شبیه‌ساز تلگرام</h4>
+                    <p className="text-[9px] text-slate-400">سندباکس محلی</p>
                   </div>
                 </div>
                 <button 
-                  onClick={() => setSimChat([{ sender: 'bot', text: 'ربات ری‌استارت شد.' }])}
+                  onClick={() => setSimMessages([{ sender: 'bot', text: 'ربات ری‌استارت شد.' }])}
                   className="text-slate-400 hover:text-white text-[10px]"
                 >
                   پاکسازی
                 </button>
               </div>
-              <div className="flex-1 p-3 overflow-y-auto flex flex-col gap-2 text-xs bg-[#07080c]">
-                {simChat.map((m, idx) => (
+              <div className="flex-1 p-3 overflow-y-auto flex flex-col gap-2 text-xs">
+                {simMessages.map((m, idx) => (
                   <div 
                     key={idx} 
-                    className={`p-2.5 rounded-xl max-w-[85%] whitespace-pre-line text-xs ${
+                    className={`p-2.5 rounded-xl max-w-[85%] whitespace-pre-line ${
                       m.sender === 'user' 
                         ? 'bg-indigo-600 text-white self-end rounded-br-none' 
-                        : 'bg-[#141620] text-slate-200 border border-slate-800 self-start rounded-bl-none'
+                        : 'bg-[#151722] text-slate-200 border border-slate-800 self-start rounded-bl-none'
                     }`}
                   >
                     {m.text}
                   </div>
                 ))}
               </div>
-              <div className="p-2.5 bg-[#0e1017] border-t border-slate-800 flex items-center gap-1.5">
+              <div className="p-2 bg-[#10121a] border-t border-slate-800 flex items-center gap-1.5">
                 <input 
                   type="text" 
-                  value={simText}
-                  onChange={e => setSimText(e.target.value)}
+                  value={simInput}
+                  onChange={e => setSimInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSimSend()}
-                  placeholder="پیام یا دستوری بفرستید (مثلاً /start)..." 
-                  className="flex-1 bg-[#12141c] border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  placeholder="ارسال پیام یا دستور..." 
+                  className="flex-1 bg-[#151722] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"
                 />
                 <button 
                   onClick={handleSimSend}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-lg transition-colors cursor-pointer"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white p-1.5 rounded-lg"
                 >
                   <Send className="w-3.5 h-3.5" />
                 </button>
@@ -523,195 +459,121 @@ Output MUST be strict JSON:
 
       </main>
 
-      {/* 3. SLEEK DOCKED PROMPT BAR (Clean, no clutter, no chips) */}
-      <div className="fixed bottom-0 left-0 right-0 p-2 md:p-3 bg-[#06070a]/95 border-t border-slate-800/80 backdrop-blur-md z-20">
-        <div className="max-w-4xl w-full mx-auto flex items-center gap-2">
+      {/* 3. PROMPT INPUT BAR (Roomy, human placeholder) */}
+      <div className="fixed bottom-0 left-0 right-0 p-3 bg-[#07080b]/95 border-t border-slate-800 z-20">
+        <div className="max-w-3xl w-full mx-auto flex items-center gap-2">
           <input 
             type="text"
-            value={userInput}
-            onChange={e => setUserInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleExecuteAI()}
-            placeholder="دستور به هوش مصنوعی (مثلاً «دستور /calc برای محاسبه اضافه کن»)..."
-            className="flex-1 bg-[#0d0f15] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSendPrompt()}
+            placeholder="مثلاً: یک ربات قیمت ارز با منوی دکمه‌ای بساز..."
+            className="flex-1 bg-[#10121a] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
           <button 
-            onClick={handleExecuteAI}
-            disabled={isProcessing || !userInput.trim()}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40 shrink-0"
+            onClick={handleSendPrompt}
+            disabled={loading || !prompt.trim()}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl text-xs font-medium transition-colors disabled:opacity-40 shrink-0 flex items-center gap-1"
           >
-            {isProcessing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            <span className="hidden sm:inline">ارسال</span>
+            {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            <span>ارسال</span>
           </button>
         </div>
       </div>
 
-      {/* 4. UNIFIED SETTINGS DRAWER / MODAL */}
+      {/* 4. SETTINGS MODAL (Concise labels, zero fluff) */}
       {settingsOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 md:p-4">
-          <div className="bg-[#0d0f15] border border-slate-800 rounded-2xl max-w-lg w-full p-4 md:p-5 shadow-2xl flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-3">
+          <div className="bg-[#0f1118] border border-slate-800 rounded-2xl max-w-md w-full p-4 flex flex-col gap-3 max-h-[90vh] overflow-y-auto text-xs">
             
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <Settings className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-xs md:text-sm font-bold text-white">تنظیمات و کلیدهای ارتباطی</h3>
-              </div>
-              <button 
-                onClick={() => setSettingsOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded"
-              >
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <h3 className="font-bold text-white">تنظیمات و کلیدها</h3>
+              <button onClick={() => setSettingsOpen(false)} className="text-slate-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="flex flex-col gap-3.5 text-xs">
-
-              {/* 1. Google Gemini AI Key */}
-              <div className="bg-[#08090d] border border-slate-800/80 rounded-xl p-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                    کلید هوش مصنوعی Google Gemini
-                  </span>
-                  <a 
-                    href="https://aistudio.google.com/app/apikey" 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="text-[10px] text-indigo-400 hover:underline flex items-center gap-0.5"
-                  >
-                    <span>دریافت رایگان کلید</span>
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                </div>
-                <input 
-                  type="password"
-                  value={geminiKey}
-                  onChange={e => {
-                    setGeminiKey(e.target.value);
-                    localStorage.setItem("mb_gemini_key", e.target.value.trim());
-                  }}
-                  placeholder="AQ.Ab8RN6... یا AIzaSy..."
-                  className="w-full bg-[#11131a] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none focus:border-indigo-500"
-                />
-                <p className="text-[10px] text-slate-500">پشتیبانی از فرمت‌های جدید (AQ...) و قدیمی بدون نیاز به سرور واسط.</p>
+            {/* Gemini */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-slate-300 font-medium">کلید Gemini</label>
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[10px] text-indigo-400 hover:underline">
+                  دریافت کلید
+                </a>
               </div>
-
-              {/* 2. GitHub Token */}
-              <div className="bg-[#08090d] border border-slate-800/80 rounded-xl p-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white flex items-center gap-1.5">
-                    <Github className="w-3.5 h-3.5 text-slate-300" />
-                    توکن دسترسی گیت‌هاب (Personal Access Token)
-                  </span>
-                  <a 
-                    href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=Motherboter" 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="text-[10px] text-indigo-400 hover:underline flex items-center gap-0.5"
-                  >
-                    <span>ساخت توکن</span>
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                </div>
-                <input 
-                  type="password"
-                  value={githubToken}
-                  onChange={e => {
-                    setGithubToken(e.target.value);
-                    localStorage.setItem("mb_gh_token", e.target.value.trim());
-                  }}
-                  placeholder="ghp_... یا github_pat_..."
-                  className="w-full bg-[#11131a] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none focus:border-indigo-500"
-                />
-                <div className="flex items-center justify-between text-[10px] text-slate-500">
-                  <span>نام ریپازیتوری در گیت‌هاب:</span>
-                  <input 
-                    type="text"
-                    value={repoName}
-                    onChange={e => {
-                      setRepoName(e.target.value);
-                      localStorage.setItem("mb_repo_name", e.target.value.trim());
-                    }}
-                    className="bg-[#11131a] border border-slate-800 rounded px-2 py-0.5 text-white font-mono text-[10px] w-36 text-left"
-                  />
-                </div>
-              </div>
-
-              {/* 3. Cloudflare Credentials */}
-              <div className="bg-[#08090d] border border-slate-800/80 rounded-xl p-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white flex items-center gap-1.5">
-                    <Cloud className="w-3.5 h-3.5 text-amber-400" />
-                    حساب کلودفلر (Cloudflare Workers)
-                  </span>
-                  <span className="text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">آماده</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[9px] text-slate-500 mb-0.5">Cloudflare API Token</label>
-                    <input 
-                      type="password"
-                      value={cfToken}
-                      onChange={e => {
-                        setCfToken(e.target.value);
-                        localStorage.setItem("mb_cf_token", e.target.value.trim());
-                      }}
-                      className="w-full bg-[#11131a] border border-slate-800 rounded px-2 py-1.5 text-white font-mono text-[11px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[9px] text-slate-500 mb-0.5">Account ID</label>
-                    <input 
-                      type="text"
-                      value={cfAccount}
-                      onChange={e => {
-                        setCfAccount(e.target.value);
-                        localStorage.setItem("mb_cf_acc", e.target.value.trim());
-                      }}
-                      className="w-full bg-[#11131a] border border-slate-800 rounded px-2 py-1.5 text-white font-mono text-[11px]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 4. Telegram Bot Token */}
-              <div className="bg-[#08090d] border border-slate-800/80 rounded-xl p-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white flex items-center gap-1.5">
-                    <Bot className="w-3.5 h-3.5 text-sky-400" />
-                    توکن ربات تلگرام (اختیاری)
-                  </span>
-                  <a 
-                    href="https://t.me/BotFather" 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="text-[10px] text-sky-400 hover:underline flex items-center gap-0.5"
-                  >
-                    <span>BotFather@</span>
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                </div>
-                <input 
-                  type="password"
-                  value={tgToken}
-                  onChange={e => {
-                    setTgToken(e.target.value);
-                    localStorage.setItem("mb_tg_token", e.target.value.trim());
-                  }}
-                  placeholder="7123456789:AAH..."
-                  className="w-full bg-[#11131a] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <button 
-                onClick={() => {
-                  setSettingsOpen(false);
-                  addLog('system', 'تنظیمات ذخیره شد. می‌توانید دستورات را ارسال یا پروژه را دیپلوی کنید.');
+              <input 
+                type="password"
+                value={geminiKey}
+                onChange={e => {
+                  setGeminiKey(e.target.value);
+                  localStorage.setItem("mb_gemini_key", e.target.value.trim());
                 }}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-xl text-xs transition-colors cursor-pointer mt-1"
-              >
-                ذخیره و تایید
-              </button>
+                placeholder="AQ... یا AIza..."
+                className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none"
+              />
             </div>
+
+            {/* GitHub */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-slate-300 font-medium">توکن گیت‌هاب</label>
+                <a href="https://github.com/settings/tokens/new?scopes=repo,workflow" target="_blank" rel="noreferrer" className="text-[10px] text-indigo-400 hover:underline">
+                  ساخت توکن
+                </a>
+              </div>
+              <input 
+                type="password"
+                value={githubToken}
+                onChange={e => {
+                  setGithubToken(e.target.value);
+                  localStorage.setItem("mb_gh_token", e.target.value.trim());
+                }}
+                placeholder="ghp_..."
+                className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none"
+              />
+            </div>
+
+            {/* Repo Name */}
+            <div>
+              <label className="block text-slate-300 font-medium mb-1">نام ریپازیتوری</label>
+              <input 
+                type="text"
+                value={repoName}
+                onChange={e => {
+                  setRepoName(e.target.value);
+                  localStorage.setItem("mb_repo_name", e.target.value.trim());
+                }}
+                className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none"
+              />
+            </div>
+
+            {/* Telegram Bot Token */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-slate-300 font-medium">توکن ربات تلگرام (اختیاری)</label>
+                <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-[10px] text-indigo-400 hover:underline">
+                  BotFather@
+                </a>
+              </div>
+              <input 
+                type="password"
+                value={tgToken}
+                onChange={e => {
+                  setTgToken(e.target.value);
+                  localStorage.setItem("mb_tg_token", e.target.value.trim());
+                }}
+                placeholder="7123456789:AAH..."
+                className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none"
+              />
+            </div>
+
+            <button 
+              onClick={() => setSettingsOpen(false)}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-xl text-xs transition-colors mt-2"
+            >
+              ذخیره
+            </button>
+
           </div>
         </div>
       )}
