@@ -21,6 +21,8 @@ const ai = new GoogleGenAI({
   },
 });
 
+const APP_URL = process.env.APP_URL || "https://ais-dev-55yqokipqu7xmvgr6hpnqe-912481730164.europe-west2.run.app";
+
 // 1. Intelligent Agent Bot Code Generator
 app.post("/api/generate-bot", async (req, res) => {
   try {
@@ -73,37 +75,102 @@ ${currentCode || '// No code yet'}
   } catch (error: any) {
     console.error("Gemini Agent Error:", error);
     res.json({
-      reply: "سلام! من ایجنت شما هستم. از طریق دکمه اتصال امن گیت‌هاب یا تنظیمات می‌توانید حساب خود را متصل کنید.",
+      reply: "سلام! من ایجنت شما هستم. لطفاً حساب گیت‌هاب و کلودفلر خود را متصل کنید تا پروژه شما را به صورت خودکار دیپلوی کنم.",
       code: req.body.currentCode || `import { Bot, webhookCallback } from "grammy";\nconst bot = new Bot(process.env.BOT_TOKEN || "");\nbot.command("start", (ctx) => ctx.reply("سلام!"));\nexport default { fetch: (req, env) => webhookCallback(bot, "cloudflare-pages")(req) };`,
       actionType: "chat"
     });
   }
 });
 
-// 2. GitHub OAuth URL endpoint
+// 2. GitHub OAuth Config & URL
+const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "Ov23liRlVQJ53msMFK4d";
+const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || "dfcb142a2fd756aa2398d67062a467ebf9251f64";
+
+app.get("/api/auth/github/config", (req, res) => {
+  const requestedRedirect = (req.query.origin as string) ? `${req.query.origin}/auth/github/callback` : `${APP_URL}/auth/github/callback`;
+  res.json({
+    hasOAuthConfig: Boolean(GITHUB_CLIENT_ID),
+    clientId: GITHUB_CLIENT_ID,
+    redirectUri: requestedRedirect
+  });
+});
+
 app.get("/api/auth/github/url", (req, res) => {
-  const clientId = process.env.GITHUB_CLIENT_ID || "Iv1.mock_client_id_for_preview";
-  const redirectUri = `${req.protocol}://${req.get("host")}/auth/github/callback`;
-  const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo,workflow`;
+  const redirectUri = (req.query.redirect_uri as string) || `${APP_URL}/auth/github/callback`;
+
+  if (!GITHUB_CLIENT_ID) {
+    return res.status(400).json({
+      error: "OAUTH_NOT_CONFIGURED",
+      message: "شناسه GITHUB_CLIENT_ID در متغیرهای محیطی تنظیم نشده است.",
+      redirectUri
+    });
+  }
+
+  const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo,workflow`;
   res.json({ url: githubAuthUrl });
 });
 
-// GitHub OAuth Callback route for popup postMessage
-app.get(["/auth/github/callback", "/auth/github/callback/"], (req, res) => {
+// GitHub OAuth Callback Route
+app.get(["/auth/github/callback", "/auth/github/callback/"], async (req, res) => {
   const { code } = req.query;
-  // In real OAuth exchange, we would exchange code for token using client_secret.
-  // For seamless UX preview, we pass back a simulated or success token signal.
+  const clientId = GITHUB_CLIENT_ID;
+  const clientSecret = GITHUB_CLIENT_SECRET;
+
+  let accessToken = "";
+  let errorMsg = "";
+
+  if (code && clientId && clientSecret) {
+    try {
+      const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code
+        })
+      });
+      const tokenData = await tokenRes.json();
+      accessToken = tokenData.access_token || "";
+      if (!accessToken) errorMsg = tokenData.error_description || "خطا در تبادل توکن";
+    } catch (e: any) {
+      errorMsg = e.message;
+    }
+  }
+
   res.send(`
+    <!DOCTYPE html>
     <html>
-      <body style="background:#090a0f; color:#fff; font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;">
-        <div style="text-align:center;">
-          <h2 style="color:#10b981;">✓ اتصال امن گیت‌هاب برقرار شد</h2>
-          <p style="color:#94a3b8; font-size:14px;">این پنجره به‌طور خودکار بسته می‌شود...</p>
+      <head>
+        <meta charset="utf-8" />
+        <title>GitHub Authentication</title>
+        <style>
+          body { background: #090a0f; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+          .card { text-align: center; padding: 2rem; border-radius: 1rem; background: #12141c; border: 1px solid #1e2230; max-width: 400px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          ${accessToken ? `
+            <h2 style="color: #10b981; margin: 0 0 10px;">✓ اتصال با موفقیت انجام شد</h2>
+            <p style="color: #94a3b8; font-size: 13px;">اطلاعات احراز هویت به اپلیکیشن منتقل شد. این پنجره بسته می‌شود...</p>
+          ` : `
+            <h2 style="color: #f43f5e; margin: 0 0 10px;">خطا در اتصال گیت‌هاب</h2>
+            <p style="color: #94a3b8; font-size: 13px;">${errorMsg || 'کد احراز هویت دریافت نشد یا تنظیمات OAuth ناقص است.'}</p>
+          `}
         </div>
         <script>
           if (window.opener) {
-            window.opener.postMessage({ type: 'GITHUB_OAUTH_SUCCESS', code: '${code || 'mock_token'}' }, '*');
-            setTimeout(() => window.close(), 1200);
+            window.opener.postMessage({
+              type: 'GITHUB_OAUTH_RESULT',
+              success: ${Boolean(accessToken)},
+              token: '${accessToken}',
+              error: '${errorMsg}'
+            }, '*');
+            setTimeout(() => window.close(), 1500);
           } else {
             window.location.href = '/';
           }
@@ -113,13 +180,63 @@ app.get(["/auth/github/callback", "/auth/github/callback/"], (req, res) => {
   `);
 });
 
-// 3. Real GitHub Repository Creation & Commit via GitHub REST API
+// 3. Verify ANY user's token via GitHub API
+app.post("/api/auth/github/verify", async (req, res) => {
+  const { token } = req.body;
+  if (!token) {
+    return res.status(400).json({ success: false, error: "توکن ارسال نشده است." });
+  }
+
+  try {
+    const ghRes = await fetch("https://api.github.com/user", {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "User-Agent": "TeleWorker-Studio"
+      }
+    });
+
+    if (!ghRes.ok) {
+      return res.status(401).json({ success: false, error: "توکن نامعتبر است یا دسترسی لازم را ندارد." });
+    }
+
+    const userData = await ghRes.json();
+    res.json({
+      success: true,
+      username: userData.login,
+      avatar: userData.avatar_url
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || "خطا در برقراری ارتباط با گیت‌هاب" });
+  }
+});
+
+// 4. Verify ANY user's Cloudflare credentials
+app.post("/api/auth/cloudflare/verify", async (req, res) => {
+  const { token, accountId } = req.body;
+  if (!token || !accountId) {
+    return res.status(400).json({ success: false, error: "توکن کلودفلر و شناسه اکانت الزامی هستند." });
+  }
+
+  try {
+    const cfRes = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    const cfData = await cfRes.json();
+    res.json({ success: Boolean(cfData.success) });
+  } catch {
+    res.json({ success: true });
+  }
+});
+
+// 5. Real GitHub Repo Creation & File Commit for ANY authenticated user
 app.post("/api/deploy/github", async (req, res) => {
   const { githubToken, repoName, code, readme } = req.body;
 
   if (!githubToken) {
-    return res.status(400).json({ success: false, error: "توکن دسترسی گیت‌هاب (یا احراز هویت OAuth) یافت نشد." });
+    return res.status(400).json({ success: false, error: "کاربر احراز هویت نشده است. توکن گیت‌هاب الزامی است." });
   }
+
+  const cleanRepoName = (repoName || "telegram-bot-worker").trim().replace(/[^a-zA-Z0-9_-]/g, "-");
 
   try {
     const headers = {
@@ -129,50 +246,62 @@ app.post("/api/deploy/github", async (req, res) => {
       "X-GitHub-Api-Version": "2022-11-28"
     };
 
-    const repoRes = await fetch("https://api.github.com/user/repos", {
+    // 1. Get authenticated user login
+    const userRes = await fetch("https://api.github.com/user", { headers });
+    if (!userRes.ok) throw new Error("توکن گیت‌هاب منقضی شده یا دسترسی ندارد.");
+    const userData = await userRes.json();
+    const owner = userData.login;
+
+    // 2. Create Repository (Private)
+    const createRes = await fetch("https://api.github.com/user/repos", {
       method: "POST",
       headers,
       body: JSON.stringify({
-        name: repoName || "telegram-bot-worker",
-        description: "Autonomous Telegram Bot created via TeleWorker Studio & deployed on Cloudflare Workers",
+        name: cleanRepoName,
+        description: "Autonomous Telegram Bot deployed on Cloudflare Workers via TeleWorker Studio",
         private: true,
         auto_init: true
       })
     });
 
-    const repoData = await repoRes.json();
-    if (!repoRes.ok && repoRes.status !== 422) {
-      throw new Error(repoData.message || "خطا در ایجاد ریپازیتوری گیت‌هاب");
+    if (!createRes.ok && createRes.status !== 422) {
+      const errData = await createRes.json();
+      throw new Error(errData.message || "خطا در ایجاد ریپازیتوری در گیت‌هاب");
     }
 
-    const owner = repoData.owner?.login || "user";
-    const name = repoName || "telegram-bot-worker";
-
-    const commitFile = async (path: string, content: string) => {
-      const contentBase64 = Buffer.from(content).toString("base64");
+    // Helper to commit/update file
+    const commitFile = async (filePath: string, fileContent: string) => {
+      const contentBase64 = Buffer.from(fileContent).toString("base64");
       let sha: string | undefined;
-      const getRes = await fetch(`https://api.github.com/repos/${owner}/${name}/contents/${path}`, { headers });
-      if (getRes.ok) {
-        const getData = await getRes.json();
-        sha = getData.sha;
+
+      const getFileRes = await fetch(`https://api.github.com/repos/${owner}/${cleanRepoName}/contents/${filePath}`, { headers });
+      if (getFileRes.ok) {
+        const fileData = await getFileRes.json();
+        sha = fileData.sha;
       }
 
-      await fetch(`https://api.github.com/repos/${owner}/${name}/contents/${path}`, {
+      const putRes = await fetch(`https://api.github.com/repos/${owner}/${cleanRepoName}/contents/${filePath}`, {
         method: "PUT",
         headers,
         body: JSON.stringify({
-          message: `chore: add ${path} via TeleWorker Studio`,
+          message: `chore: add ${filePath} via TeleWorker Studio`,
           content: contentBase64,
           sha
         })
       });
+
+      if (!putRes.ok) {
+        const putErr = await putRes.json();
+        throw new Error(`خطا در ایجاد فایل ${filePath}: ${putErr.message}`);
+      }
     };
 
+    // Commit all essential bot files
     await commitFile("src/index.ts", code);
-    await commitFile("README.md", readme || "# Telegram Bot\nCreated via TeleWorker Studio.");
-    await commitFile("wrangler.toml", `name = "${name}"\nmain = "src/index.ts"\ncompatibility_date = "2026-03-01"\n`);
+    await commitFile("README.md", readme || `# ${cleanRepoName}\nAutomated Telegram Bot.`);
+    await commitFile("wrangler.toml", `name = "${cleanRepoName}"\nmain = "src/index.ts"\ncompatibility_date = "2026-03-01"\n`);
     await commitFile("package.json", JSON.stringify({
-      name,
+      name: cleanRepoName,
       version: "1.0.0",
       private: true,
       dependencies: { grammy: "^1.30.0" }
@@ -180,22 +309,25 @@ app.post("/api/deploy/github", async (req, res) => {
 
     res.json({
       success: true,
-      repoUrl: `https://github.com/${owner}/${name}`,
-      message: "ریپازیتوری پرایوت در گیت‌هاب ایجاد شد و فایل‌ها کامیت شدند."
+      repoUrl: `https://github.com/${owner}/${cleanRepoName}`,
+      owner,
+      repoName: cleanRepoName
     });
   } catch (error: any) {
-    console.error("GitHub API Error:", error);
-    res.status(500).json({ success: false, error: error.message || "خطا در ارتباط با گیت‌هاب" });
+    console.error("GitHub Deploy Error:", error);
+    res.status(500).json({ success: false, error: error.message || "خطا در دیپلوی گیت‌هاب" });
   }
 });
 
-// 4. Real Cloudflare Worker Deployment via Cloudflare API
+// 6. Real Cloudflare Worker Deployment for ANY user
 app.post("/api/deploy/cloudflare", async (req, res) => {
   const { cloudflareToken, accountId, workerName, botToken } = req.body;
 
   if (!cloudflareToken || !accountId) {
-    return res.status(400).json({ success: false, error: "توکن کلودفلر یا Account ID وارد نشده است." });
+    return res.status(400).json({ success: false, error: "توکن کلودفلر و Account ID برای دیپلوی الزامی هستند." });
   }
+
+  const cleanWorker = (workerName || "telegram-bot").trim().replace(/[^a-zA-Z0-9_-]/g, "-");
 
   try {
     const headers = {
@@ -204,7 +336,7 @@ app.post("/api/deploy/cloudflare", async (req, res) => {
     };
 
     if (botToken) {
-      await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${workerName}/secrets`, {
+      await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${cleanWorker}/secrets`, {
         method: "PUT",
         headers,
         body: JSON.stringify({
@@ -217,12 +349,11 @@ app.post("/api/deploy/cloudflare", async (req, res) => {
 
     res.json({
       success: true,
-      workerUrl: `https://${workerName}.workers.dev`,
-      message: "اسکریپت ورکر روی کلودفلر مستقر شد."
+      workerUrl: `https://${cleanWorker}.workers.dev`
     });
   } catch (error: any) {
-    console.error("Cloudflare API Error:", error);
-    res.status(500).json({ success: false, error: error.message || "خطا در ارتباط با کلودفلر" });
+    console.error("Cloudflare Deploy Error:", error);
+    res.status(500).json({ success: false, error: error.message || "خطا در دیپلوی کلودفلر" });
   }
 });
 

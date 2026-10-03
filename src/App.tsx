@@ -4,7 +4,7 @@ import {
   Sparkles, ShieldCheck, Code, Globe, RefreshCw, Send, Copy, Check, 
   FileCode, Cpu, Layers, Zap, ExternalLink, Key, Lock, Play, Settings,
   Sliders, Server, MessageSquare, Activity, Download, Eye, TerminalSquare,
-  Layers3, Wand2
+  Layers3, Wand2, UserCheck, AlertCircle, HelpCircle
 } from "lucide-react";
 
 export default function App() {
@@ -12,29 +12,35 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Core Integrations & Configuration State
-  const [botName, setBotName] = useState("پشتیبان هوشمند تلگرام");
-  const [botToken, setBotToken] = useState("");
-  
-  // GitHub Integration
-  const [githubToken, setGithubToken] = useState("");
+  // User-specific credentials (stored in state and localStorage)
+  const [githubToken, setGithubToken] = useState(() => localStorage.getItem("tw_gh_token") || "");
+  const [githubUsername, setGithubUsername] = useState<string | null>(() => localStorage.getItem("tw_gh_user") || null);
+  const [githubAvatar, setGithubAvatar] = useState<string | null>(() => localStorage.getItem("tw_gh_avatar") || null);
   const [githubConnected, setGithubConnected] = useState(false);
 
-  // Cloudflare Integration
-  const [cloudflareToken, setCloudflareToken] = useState("");
-  const [accountId, setAccountId] = useState("");
+  const [cloudflareToken, setCloudflareToken] = useState(() => localStorage.getItem("tw_cf_token") || "");
+  const [accountId, setAccountId] = useState(() => localStorage.getItem("tw_cf_account") || "");
   const [cloudflareConnected, setCloudflareConnected] = useState(false);
 
-  // Google / Gemini AI Integration
-  const [googleConnected] = useState(true); // Always connected via AI Studio runtime
+  const [botToken, setBotToken] = useState(() => localStorage.getItem("tw_tg_token") || "");
+  const [botName, setBotName] = useState("پشتیبان هوشمند تلگرام");
 
   const [repoName, setRepoName] = useState("telegram-bot-worker");
   const [workerName, setWorkerName] = useState("smart-telegram-bot");
 
+  // OAuth capability state
+  const [hasOAuthConfig, setHasOAuthConfig] = useState(false);
+  const [oauthCallbackUrl, setOauthCallbackUrl] = useState("");
+
   // Agent State & History
   const [promptInput, setPromptInput] = useState("");
   const [history, setHistory] = useState<Array<{ id: string; type: 'user' | 'agent' | 'log' | 'success'; text: string; time: string }>>([
-    { id: '1', type: 'agent', text: 'سلام! هاب اینتگریشن‌های ابری آماده است. گیت‌هاب (OAuth)، کلودفلر (Workers) و گوگل جمینی (AI) متصل و عملیاتی هستند.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+    { 
+      id: '1', 
+      type: 'agent', 
+      text: 'سلام! به TeleWorker Studio خوش آمدید. این وب‌اپلیکیشن برای ساخت و دیپلوی خودکار ربات تلگرام روی حساب گیت‌هاب و کلودفلر اختصاصی شما طراحی شده است.', 
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+    }
   ]);
 
   // Code Sandbox State
@@ -43,7 +49,7 @@ export default function App() {
 const bot = new Bot(process.env.BOT_TOKEN || "");
 
 bot.command("start", async (ctx) => {
-  await ctx.reply("سلام! ربات شما روی کلودفلر و جمینی آنلاین است. 🚀");
+  await ctx.reply("سلام! ربات تلگرام اختصاصی شما روی کلودفلر و جمینی فعال است. 🚀");
 });
 
 bot.on("message:text", async (ctx) => {
@@ -64,36 +70,110 @@ export default {
     historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [history]);
 
-  // Listen for GitHub OAuth PostMessage
+  // Check OAuth config and verify stored tokens on initial load
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'GITHUB_OAUTH_SUCCESS') {
-        const token = event.data.code || 'gh_oauth_connected_token';
-        setGithubToken(token);
-        setGithubConnected(true);
-        addHistoryItem('success', 'حساب گیت‌هاب با موفقیت متصل شد.');
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    fetch("/api/auth/github/config")
+      .then(res => res.json())
+      .then(data => {
+        setHasOAuthConfig(data.hasOAuthConfig);
+        setOauthCallbackUrl(data.redirectUri);
+      })
+      .catch(() => {});
+
+    if (githubToken) {
+      verifyGithubToken(githubToken, false);
+    }
+    if (cloudflareToken && accountId) {
+      verifyCloudflare(cloudflareToken, accountId, false);
+    }
   }, []);
 
-  const handleGitHubOAuthLogin = async () => {
-    try {
-      const res = await fetch("/api/auth/github/url");
-      const { url } = await res.json();
-      window.open(url, "github_oauth", "width=600,height=700");
-    } catch {
-      addHistoryItem('log', 'خطا در ارتباط با سرور OAuth گیت‌هاب.');
-    }
-  };
+  // Listen for OAuth message
+  useEffect(() => {
+    const handleOAuthResult = (event: MessageEvent) => {
+      if (event.data?.type === 'GITHUB_OAUTH_RESULT') {
+        if (event.data.success && event.data.token) {
+          verifyGithubToken(event.data.token, true);
+        } else {
+          addHistoryItem('log', `خطا در OAuth گیت‌هاب: ${event.data.error || 'لغو شد'}`);
+        }
+      }
+    };
+    window.addEventListener('message', handleOAuthResult);
+    return () => window.removeEventListener('message', handleOAuthResult);
+  }, []);
 
   const addHistoryItem = (type: 'user' | 'agent' | 'log' | 'success', text: string) => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setHistory((prev: Array<{ id: string; type: 'user' | 'agent' | 'log' | 'success'; text: string; time: string }>) => [
+    setHistory(prev => [
       ...prev, 
       { id: Math.random().toString(36).substring(2, 9), type, text, time }
     ]);
+  };
+
+  const verifyGithubToken = async (tokenToVerify: string, notify = true) => {
+    if (!tokenToVerify) return;
+    try {
+      const res = await fetch("/api/auth/github/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: tokenToVerify })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGithubConnected(true);
+        setGithubUsername(data.username);
+        setGithubAvatar(data.avatar);
+        setGithubToken(tokenToVerify);
+        localStorage.setItem("tw_gh_token", tokenToVerify);
+        localStorage.setItem("tw_gh_user", data.username);
+        if (data.avatar) localStorage.setItem("tw_gh_avatar", data.avatar);
+        if (notify) addHistoryItem('success', `حساب گیت‌هاب با موفقیت متصل و تایید شد: @${data.username}`);
+      } else {
+        setGithubConnected(false);
+        if (notify) addHistoryItem('log', `خطا در اتصال به گیت‌هاب: ${data.error}`);
+      }
+    } catch {
+      setGithubConnected(false);
+      if (notify) addHistoryItem('log', 'خطا در ارتباط با سرور اعتبارسنجی گیت‌هاب.');
+    }
+  };
+
+  const verifyCloudflare = async (token: string, accId: string, notify = true) => {
+    if (!token || !accId) return;
+    try {
+      const res = await fetch("/api/auth/cloudflare/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, accountId: accId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCloudflareConnected(true);
+        localStorage.setItem("tw_cf_token", token);
+        localStorage.setItem("tw_cf_account", accId);
+        if (notify) addHistoryItem('success', 'اتصال به کلودفلر تایید شد.');
+      } else {
+        setCloudflareConnected(false);
+      }
+    } catch {
+      setCloudflareConnected(false);
+    }
+  };
+
+  const handleOAuthClick = async () => {
+    try {
+      const redirectUri = `${window.location.origin}/auth/github/callback`;
+      const res = await fetch(`/api/auth/github/url?redirect_uri=${encodeURIComponent(redirectUri)}`);
+      const data = await res.json();
+      if (data.url) {
+        window.open(data.url, "github_oauth", "width=600,height=700");
+      } else {
+        alert(data.message || "خطا در دریافت آدرس احراز هویت گیت‌هاب.");
+      }
+    } catch {
+      alert("خطا در باز کردن احراز هویت گیت‌هاب.");
+    }
   };
 
   const handleExecutePrompt = async (customText?: string) => {
@@ -128,28 +208,30 @@ export default {
   };
 
   const handleFullAutonomousDeploy = async () => {
-    if (!githubToken && !githubConnected) {
+    if (!githubConnected || !githubToken) {
       setSettingsOpen(true);
-      addHistoryItem('log', 'لطفاً ابتدا حساب گیت‌هاب خود را متصل کنید.');
+      addHistoryItem('log', 'لطفاً ابتدا حساب گیت‌هاب خود را متصل کنید (از طریق اتصال گیت‌هاب در منوی تنظیمات).');
       return;
     }
 
     setLoading(true);
-    addHistoryItem('log', '🚀 شروع اتومیشن ۰ تا ۱ با سرویس‌های متصل (گیت‌هاب، کلودفلر، جمینی)...');
+    addHistoryItem('log', `🚀 شروع اتومیشن برای کاربر @${githubUsername || 'user'}...`);
 
     try {
-      addHistoryItem('log', `در حال ایجاد ریپازیتوری پرایوت "${repoName}" در گیت‌هاب...`);
+      // 1. GitHub Deploy
+      addHistoryItem('log', `در حال ساخت ریپازیتوری پرایوت "${repoName}" در گیت‌هاب شما...`);
       const ghRes = await fetch("/api/deploy/github", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ githubToken: githubToken || 'mock_token', repoName, code, readme: `# ${botName}\n\nAutomated Telegram Bot via TeleWorker Studio.` })
+        body: JSON.stringify({ githubToken, repoName, code, readme: `# ${botName}\n\nAutomated Telegram Bot created via TeleWorker Studio.` })
       });
       const ghData = await ghRes.json();
       if (!ghData.success) throw new Error(ghData.error);
-      addHistoryItem('success', `ریپازیتوری گیت‌هاب ساخته و کدها پوش شدند: ${ghData.repoUrl}`);
+      addHistoryItem('success', `ریپازیتوری با موفقیت در اکانت شما ایجاد و فایل‌ها کامیت شدند: ${ghData.repoUrl}`);
 
+      // 2. Cloudflare Deploy (if configured)
       if (cloudflareToken && accountId) {
-        addHistoryItem('log', `در حال راه‌اندازی و دیپلوی روی کلودفلر ورکر (${workerName})...`);
+        addHistoryItem('log', `در حال دیپلوی ورکر "${workerName}" روی حساب کلودفلر شما...`);
         const cfRes = await fetch("/api/deploy/cloudflare", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -157,13 +239,14 @@ export default {
         });
         const cfData = await cfRes.json();
         if (!cfData.success) throw new Error(cfData.error);
-        setCloudflareConnected(true);
-        addHistoryItem('success', `دیپلوی ابری روی کلودفلر انجام شد! آدرس: ${cfData.workerUrl}`);
+        addHistoryItem('success', `ورکر روی کلودفلر شما مستقر شد: ${cfData.workerUrl}`);
+      } else {
+        addHistoryItem('log', 'نکته: توکن کلودفلر وارد نشده بود؛ فایل‌های ربات روی گیت‌هاب شما بارگذاری شد اما دیپلوی کلودفلر مستلزم توکن کلودفلر است.');
       }
 
-      addHistoryItem('agent', 'پروژه شما با موفقیت از طریق سرویس‌های ابری متصل پیاده‌سازی شد!');
+      addHistoryItem('agent', 'فرآیند با موفقیت انجام شد! پروژه کاملاً در مالکیت اکانت‌های شخصی شما قرار گرفت.');
     } catch (err: any) {
-      addHistoryItem('log', `خطا: ${err.message || 'خطای ناشناخته'}`);
+      addHistoryItem('log', `خطا در دیپلوی: ${err.message || 'خطای ناشناخته'}`);
     } finally {
       setLoading(false);
     }
@@ -193,7 +276,7 @@ export default {
   return (
     <div className="min-h-screen bg-[#090a0f] text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
       
-      {/* 1. Minimal Header */}
+      {/* 1. Header */}
       <header className="h-13 border-b border-slate-800/60 bg-[#090a0f]/90 backdrop-blur-md px-4 md:px-6 flex items-center justify-between shrink-0 z-30">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-600/20">
@@ -230,13 +313,11 @@ export default {
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setSettingsOpen(true)}
-            className="p-2 rounded-xl bg-[#12141c] hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors shadow-sm relative"
-            title="اینتگریشن‌ها و توکن‌ها"
+            className="p-2 rounded-xl bg-[#12141c] hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors shadow-sm relative flex items-center gap-1.5"
+            title="اتصال حساب‌ها و تنظیمات"
           >
             <Key className="w-4 h-4 text-amber-400" />
-            {(!githubConnected && !githubToken) && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
-            )}
+            <span className={`w-2 h-2 rounded-full ${githubConnected ? 'bg-emerald-400' : 'bg-rose-500'}`}></span>
           </button>
           <button 
             onClick={handleFullAutonomousDeploy}
@@ -256,16 +337,22 @@ export default {
             <div className="text-xs font-mono text-slate-500 pb-2 border-b border-slate-800/60 flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <Activity className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
-                هاب ابری و مانیتورینگ سرویس‌ها (گیت‌هاب، کلودفلر، جمینی)
+                وضعیت حساب‌های متصل
               </span>
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1 text-[10px]"><span className="w-2 h-2 rounded-full bg-emerald-400"></span> جمینی فعال</span>
-                <span className="flex items-center gap-1 text-[10px]"><span className={`w-2 h-2 rounded-full ${githubConnected ? 'bg-emerald-400' : 'bg-slate-600'}`}></span> گیت‌هاب</span>
-                <span className="flex items-center gap-1 text-[10px]"><span className={`w-2 h-2 rounded-full ${cloudflareConnected ? 'bg-emerald-400' : 'bg-slate-600'}`}></span> کلودفلر</span>
+                <span className="flex items-center gap-1 text-[10px]">
+                  <span className={`w-2 h-2 rounded-full ${githubConnected ? 'bg-emerald-400' : 'bg-rose-500'}`}></span> 
+                  {githubConnected ? `@${githubUsername}` : 'گیت‌هاب (قطع)'}
+                </span>
+                <span className="flex items-center gap-1 text-[10px]">
+                  <span className={`w-2 h-2 rounded-full ${cloudflareConnected ? 'bg-emerald-400' : 'bg-slate-600'}`}></span> 
+                  {cloudflareConnected ? 'کلودفلر (متصل)' : 'کلودفلر'}
+                </span>
               </div>
             </div>
 
-            {history.map((item: { id: string; type: string; text: string; time: string }) => (
+            {history.map((item) => (
               <div 
                 key={item.id} 
                 className={`p-4 rounded-2xl border text-xs md:text-sm leading-relaxed transition-all ${
@@ -370,7 +457,7 @@ export default {
       <div className="fixed bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-[#090a0f] via-[#090a0f]/95 to-transparent z-40">
         <div className="max-w-4xl w-full mx-auto flex flex-col gap-3">
           
-          {/* Delicate Shortcut Action Chips around Prompt */}
+          {/* Action Chips */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
             {[
               "🚀 اتومیشن کامل (گیت‌هاب + کلودفلر + جمینی)",
@@ -424,58 +511,96 @@ export default {
         </div>
       </div>
 
-      {/* 4. Settings / Cloud Integrations Hub Modal */}
+      {/* 4. Settings & Account Connection Modal */}
       {settingsOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#12141c] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-5 animate-fade-in max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Globe className="w-4 h-4 text-indigo-400" />
-                هاب اینتگریشن سرویس‌های ابری و گوگل جمینی
+                اتصال حساب‌های شخصی کاربر (گیت‌هاب و کلودفلر)
               </h3>
               <button onClick={() => setSettingsOpen(false)} className="text-slate-400 hover:text-white">&times;</button>
             </div>
 
             <div className="flex flex-col gap-4 text-xs">
               
-              {/* 1. Google Gemini AI Integration Status */}
-              <div className="bg-[#0b0c12] border border-slate-800 rounded-xl p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-violet-600/20 text-violet-400 flex items-center justify-center font-bold">
-                    ✨
+              {/* 1. GitHub Connection Section */}
+              <div className="bg-[#0b0c12] border border-slate-800 rounded-xl p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-white">
+                      <Github className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-white">اتصال به حساب گیت‌هاب شما</h4>
+                      <p className="text-[10px] text-slate-400">
+                        {githubConnected ? `متصل به عنوان @${githubUsername}` : 'جهت ساخت ریپازیتوری پرایوت و کامیت فایل‌ها'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-semibold text-white">Google Gemini 3.8 Flash Engine</h4>
-                    <p className="text-[10px] text-slate-400">موتور هوش مصنوعی فعال در بستر سرور.</p>
-                  </div>
+                  {githubConnected ? (
+                    <button 
+                      onClick={() => {
+                        setGithubConnected(false);
+                        setGithubToken("");
+                        setGithubUsername(null);
+                        localStorage.removeItem("tw_gh_token");
+                        localStorage.removeItem("tw_gh_user");
+                      }}
+                      className="text-[10px] text-rose-400 hover:underline"
+                    >
+                      قطع اتصال
+                    </button>
+                  ) : null}
                 </div>
-                <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full font-mono text-[11px]">متصل و فعال ✓</span>
-              </div>
 
-              {/* 2. GitHub OAuth Integration */}
-              <div className="bg-[#0b0c12] border border-slate-800 rounded-xl p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-white">
-                    <Github className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-white">احراز هویت امن گیت‌هاب (OAuth)</h4>
-                    <p className="text-[10px] text-slate-400">اتصال مستقیم جهت ساخت ریپازیتوری پرایوت.</p>
-                  </div>
-                </div>
-                {githubConnected || githubToken ? (
-                  <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full font-mono text-[11px]">متصل شد ✓</span>
-                ) : (
+                {/* If OAuth is enabled on deployment, show OAuth button */}
+                {hasOAuthConfig && !githubConnected && (
                   <button 
-                    onClick={handleGitHubOAuthLogin}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl font-medium transition-colors cursor-pointer"
+                    onClick={handleOAuthClick}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
                   >
-                    اتصال امن گیت‌هاب
+                    <Github className="w-4 h-4" />
+                    <span>ورود با گیت‌هاب (OAuth)</span>
                   </button>
+                )}
+
+                {/* Direct Personal Access Token connection for ANY user */}
+                {!githubConnected && (
+                  <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-800/80">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-300 font-medium">توکن شخصی گیت‌هاب (Personal Access Token)</span>
+                      <a 
+                        href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=TeleWorker+Studio" 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-indigo-400 hover:underline flex items-center gap-1 text-[10px]"
+                      >
+                        <span>ساخت توکن در گیت‌هاب</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="password" 
+                        value={githubToken} 
+                        onChange={e => setGithubToken(e.target.value)}
+                        placeholder="ghp_... یا github_pat_..."
+                        className="flex-1 bg-[#050608] border border-slate-800 rounded-lg px-3 py-2 text-white font-mono text-[11px]"
+                      />
+                      <button 
+                        onClick={() => verifyGithubToken(githubToken, true)}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-lg font-medium transition-colors cursor-pointer shrink-0"
+                      >
+                        بررسی و اتصال
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
 
-              {/* 3. Cloudflare Workers & D1 Integration */}
+              {/* 2. Cloudflare Connection Section */}
               <div className="bg-[#0b0c12] border border-slate-800 rounded-xl p-4 flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -483,49 +608,102 @@ export default {
                       <Cloud className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-white">کلودفلر ورکر و لبه شبکه</h4>
-                      <p className="text-[10px] text-slate-400">دیپلوی ابری و ست کردن سکرت‌ها.</p>
+                      <h4 className="font-semibold text-white">حساب کلودفلر ورکر (Cloudflare)</h4>
+                      <p className="text-[10px] text-slate-400">برای استقرار اسکریپت روی لبه اینترنت</p>
                     </div>
                   </div>
-                  <span className={`px-3 py-1 rounded-full font-mono text-[11px] ${cloudflareToken && accountId ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'}`}>
-                    {cloudflareToken && accountId ? 'پیکربندی شده ✓' : 'نیازمند توکن'}
-                  </span>
+                  <a 
+                    href="https://dash.cloudflare.com/profile/api-tokens" 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="text-amber-400 hover:underline flex items-center gap-1 text-[10px]"
+                  >
+                    <span>ساخت توکن کلودفلر</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
                 </div>
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
-                  <input 
-                    type="password" 
-                    value={cloudflareToken} 
-                    onChange={e => setCloudflareToken(e.target.value)}
-                    placeholder="Cloudflare API Token"
-                    className="bg-[#050608] border border-slate-800 rounded-lg px-3 py-2 text-white font-mono text-[11px]"
-                  />
-                  <input 
-                    type="text" 
-                    value={accountId} 
-                    onChange={e => setAccountId(e.target.value)}
-                    placeholder="Cloudflare Account ID"
-                    className="bg-[#050608] border border-slate-800 rounded-lg px-3 py-2 text-white font-mono text-[11px]"
-                  />
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1">Cloudflare API Token</label>
+                    <input 
+                      type="password" 
+                      value={cloudflareToken} 
+                      onChange={e => {
+                        setCloudflareToken(e.target.value);
+                        localStorage.setItem("tw_cf_token", e.target.value);
+                      }}
+                      placeholder="cfat_..."
+                      className="w-full bg-[#050608] border border-slate-800 rounded-lg px-3 py-2 text-white font-mono text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1">Cloudflare Account ID</label>
+                    <input 
+                      type="text" 
+                      value={accountId} 
+                      onChange={e => {
+                        setAccountId(e.target.value);
+                        localStorage.setItem("tw_cf_account", e.target.value);
+                      }}
+                      placeholder="Account ID"
+                      className="w-full bg-[#050608] border border-slate-800 rounded-lg px-3 py-2 text-white font-mono text-[11px]"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Bot Token */}
+              {/* 3. Telegram Bot Token */}
               <div>
-                <label className="block text-slate-300 font-medium mb-1">توکن تلگرام ربات (BOT_TOKEN)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-medium">توکن ربات تلگرام (BOT_TOKEN)</label>
+                  <a 
+                    href="https://t.me/BotFather" 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="text-indigo-400 hover:underline flex items-center gap-1 text-[10px]"
+                  >
+                    <span>دریافت از BotFather@</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
                 <input 
                   type="password" 
                   value={botToken} 
-                  onChange={e => setBotToken(e.target.value)}
+                  onChange={e => {
+                    setBotToken(e.target.value);
+                    localStorage.setItem("tw_tg_token", e.target.value);
+                  }}
                   placeholder="7123456789:AAH..."
                   className="w-full bg-[#0a0c14] border border-slate-800 rounded-xl px-3.5 py-2.5 text-white font-mono focus:outline-none focus:border-indigo-500"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 text-[10px] mb-1">نام ریپازیتوری</label>
+                  <input 
+                    type="text" 
+                    value={repoName} 
+                    onChange={e => setRepoName(e.target.value)}
+                    className="w-full bg-[#0a0c14] border border-slate-800 rounded-xl px-3.5 py-2 text-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-[10px] mb-1">نام ورکر</label>
+                  <input 
+                    type="text" 
+                    value={workerName} 
+                    onChange={e => setWorkerName(e.target.value)}
+                    className="w-full bg-[#0a0c14] border border-slate-800 rounded-xl px-3.5 py-2 text-white font-mono"
+                  />
+                </div>
               </div>
 
               <button 
                 onClick={() => setSettingsOpen(false)}
                 className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-xl transition-colors cursor-pointer mt-2 shadow-lg shadow-indigo-600/20"
               >
-                ذخیره تنظیمات و بازگشت
+                تایید و ذخیره تنظیمات
               </button>
             </div>
           </div>

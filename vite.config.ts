@@ -18,6 +18,10 @@ export default defineConfig(() => {
           target: 'http://localhost:3001',
           changeOrigin: true,
         },
+        '/auth': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+        },
       },
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
