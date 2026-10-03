@@ -25,6 +25,8 @@ interface ChatMessage {
   blocks?: AgentBlock[];
 }
 
+const DEFAULT_CLIENT_ID = "Ov23liRlVQJ53msMFK4d";
+
 export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -56,6 +58,7 @@ export default {
 
   // Credentials
   const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem("mb_gemini_key") || "");
+  const [githubClientId, setGithubClientId] = useState(() => localStorage.getItem("mb_gh_client_id") || DEFAULT_CLIENT_ID);
   const [githubToken, setGithubToken] = useState(() => localStorage.getItem("mb_gh_token") || "");
   const [githubUser, setGithubUser] = useState(() => localStorage.getItem("mb_gh_user") || "");
   const [ghChecking, setGhChecking] = useState(false);
@@ -110,7 +113,14 @@ export default {
     }
   };
 
+  // Check if returning from GitHub OAuth
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setSettingsOpen(true);
+    }
     if (githubToken && !githubUser) {
       verifyGitHubToken(githubToken);
     }
@@ -275,7 +285,7 @@ Respond STRICTLY with valid JSON:
   return (
     <div dir="rtl" className="min-h-screen bg-[#07080b] text-slate-100 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
       
-      {/* 1. CLEAN MINIMAL HEADER (No stray icons outside) */}
+      {/* 1. CLEAN MINIMAL HEADER */}
       <header className="h-13 border-b border-slate-800 bg-[#0b0c11] px-4 flex items-center justify-between shrink-0 z-30">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow">
@@ -290,7 +300,6 @@ Respond STRICTLY with valid JSON:
           title="تنظیمات و کلیدها"
         >
           <Settings className="w-4 h-4" />
-          {/* Subtle green indicator right on the settings icon if connected */}
           {githubUser && (
             <span className="absolute top-1 left-1 w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></span>
           )}
@@ -492,7 +501,7 @@ Respond STRICTLY with valid JSON:
         <div ref={messagesEndRef} />
       </main>
 
-      {/* 3. PROMPT INPUT BAR (Send button firmly on the RIGHT side, clean placeholder) */}
+      {/* 3. PROMPT INPUT BAR (Send button on the RIGHT side) */}
       <div className="fixed bottom-0 left-0 right-0 p-3 bg-[#07080b]/95 border-t border-slate-800 backdrop-blur-md z-20">
         <div className="max-w-3xl w-full mx-auto bg-[#10121a] border border-slate-800 rounded-2xl p-2.5 focus-within:border-indigo-500/80 transition-colors shadow-2xl flex flex-col gap-2">
           
@@ -515,7 +524,7 @@ Respond STRICTLY with valid JSON:
             className="w-full bg-transparent text-white text-xs md:text-sm placeholder-slate-500 focus:outline-none resize-none leading-relaxed min-h-[48px] max-h-[160px] px-2 py-1"
           />
 
-          {/* Action Row: Send button on the RIGHT side */}
+          {/* Action Row: Send button firmly on the RIGHT side */}
           <div className="flex items-center justify-start pt-1.5 border-t border-slate-800/60 px-1">
             <button 
               onClick={handleSendMessage}
@@ -530,7 +539,7 @@ Respond STRICTLY with valid JSON:
         </div>
       </div>
 
-      {/* 4. SETTINGS MODAL (Keys menu with status light inside) */}
+      {/* 4. SETTINGS MODAL (With Direct GitHub OAuth Connect button + Token option) */}
       {settingsOpen && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-3">
           <div className="bg-[#0f1118] border border-slate-800 rounded-2xl max-w-md w-full p-4 flex flex-col gap-3.5 max-h-[90vh] overflow-y-auto text-xs">
@@ -563,16 +572,15 @@ Respond STRICTLY with valid JSON:
               />
             </div>
 
-            {/* 2. GitHub (Status light right here inside keys menu!) */}
+            {/* 2. GitHub: DIRECT CONNECT BUTTON + Token input */}
             <div>
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-2">
                   <label className="text-slate-200 font-medium">حساب گیت‌هاب</label>
-                  {/* Status light inside keys menu */}
                   {githubUser ? (
                     <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/80 text-emerald-400 text-[10px]">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                      متصل: {githubUser}
+                      متصل: @{githubUser}
                     </span>
                   ) : (
                     <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">
@@ -583,10 +591,24 @@ Respond STRICTLY with valid JSON:
                 </div>
 
                 <a href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=Motherboter" target="_blank" rel="noreferrer" className="text-[10px] text-indigo-400 hover:underline flex items-center gap-1">
-                  ساخت توکن <ExternalLink className="w-3 h-3" />
+                  ساخت توکن دستی <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
-              
+
+              {/* DIRECT GITHUB OAUTH CONNECT BUTTON */}
+              <button 
+                type="button"
+                onClick={() => {
+                  const cleanClientId = (githubClientId || DEFAULT_CLIENT_ID).trim();
+                  window.location.href = `https://github.com/login/oauth/authorize?client_id=${cleanClientId}&scope=repo,workflow`;
+                }}
+                className="w-full bg-[#24292e] hover:bg-[#2f363d] text-white py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-2 border border-slate-700 cursor-pointer mb-2 font-medium"
+              >
+                <Github className="w-4 h-4" />
+                <span>اتصال مستقیم با گیت‌هاب (OAuth)</span>
+              </button>
+
+              {/* Personal Access Token alternative */}
               <div className="flex items-center gap-2">
                 <input 
                   type="password"
@@ -597,7 +619,7 @@ Respond STRICTLY with valid JSON:
                     setGithubToken(val);
                     verifyGitHubToken(val);
                   }}
-                  placeholder="توکن شخصی: ghp_..."
+                  placeholder="یا توکن شخصی: ghp_..."
                   className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none focus:border-indigo-500"
                 />
                 <button
