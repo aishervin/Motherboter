@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { 
   Bot, Settings, Send, RefreshCw, Copy, Download, 
-  Terminal, Code, CheckCircle2, X, Github, Sparkles, Cloud, AlertCircle, ExternalLink
+  Code, CheckCircle2, X, Github, Sparkles, Cloud, AlertCircle, ExternalLink
 } from "lucide-react";
 
 interface AgentBlock {
@@ -58,7 +58,6 @@ export default {
   const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem("mb_gemini_key") || "");
   const [githubToken, setGithubToken] = useState(() => localStorage.getItem("mb_gh_token") || "");
   const [githubUser, setGithubUser] = useState(() => localStorage.getItem("mb_gh_user") || "");
-  const [githubAvatar, setGithubAvatar] = useState(() => localStorage.getItem("mb_gh_avatar") || "");
   const [ghChecking, setGhChecking] = useState(false);
   const [ghError, setGhError] = useState("");
 
@@ -77,15 +76,13 @@ export default {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Check and validate GitHub token
+  // Check GitHub token
   const verifyGitHubToken = async (tokenToTest: string) => {
     const trimmed = tokenToTest.trim();
     if (!trimmed) {
       setGithubUser("");
-      setGithubAvatar("");
       setGhError("");
       localStorage.removeItem("mb_gh_user");
-      localStorage.removeItem("mb_gh_avatar");
       return;
     }
 
@@ -103,20 +100,16 @@ export default {
       }
       const data = await res.json();
       setGithubUser(data.login);
-      setGithubAvatar(data.avatar_url);
       localStorage.setItem("mb_gh_user", data.login);
-      localStorage.setItem("mb_gh_avatar", data.avatar_url);
       localStorage.setItem("mb_gh_token", trimmed);
     } catch (err: any) {
-      setGhError(err.message || "خطا در اعتبارسنجی");
+      setGhError(err.message || "خطا در اتصال");
       setGithubUser("");
-      setGithubAvatar("");
     } finally {
       setGhChecking(false);
     }
   };
 
-  // Initial check of saved GitHub token
   useEffect(() => {
     if (githubToken && !githubUser) {
       verifyGitHubToken(githubToken);
@@ -155,7 +148,7 @@ export default {
 Communicate naturally and concisely in Persian.
 Respond STRICTLY with valid JSON:
 {
-  "message": "پاسخ کوتاه و رسا به فارسی",
+  "message": "پاسخ رسا به فارسی",
   "blocks": [
     // { "type": "terminal", "title": "بیلد و کامپایل", "command": "npx wrangler check", "logs": ["تایید وابستگی‌ها ✓"] }
     // { "type": "code", "filename": "src/index.ts", "code": "/* سورس کد کامل تایپ‌اسکریپت */" }
@@ -166,7 +159,6 @@ Respond STRICTLY with valid JSON:
 
       if (geminiKey.trim()) {
         const cleanKey = geminiKey.trim();
-        // Using models/gemini-3.8-flash
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${cleanKey}`;
 
         const res = await fetch(url, {
@@ -283,7 +275,7 @@ Respond STRICTLY with valid JSON:
   return (
     <div dir="rtl" className="min-h-screen bg-[#07080b] text-slate-100 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
       
-      {/* 1. MINIMAL HEADER WITH LIVE GITHUB STATUS */}
+      {/* 1. CLEAN MINIMAL HEADER (No stray icons outside) */}
       <header className="h-13 border-b border-slate-800 bg-[#0b0c11] px-4 flex items-center justify-between shrink-0 z-30">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow">
@@ -292,35 +284,17 @@ Respond STRICTLY with valid JSON:
           <span className="font-bold text-sm text-white tracking-wide">Motherboter</span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* GitHub Connection Status Pill */}
-          {githubUser ? (
-            <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs">
-              {githubAvatar ? (
-                <img src={githubAvatar} alt={githubUser} className="w-4 h-4 rounded-full border border-emerald-500/50" />
-              ) : (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              )}
-              <span className="font-mono text-[11px]" dir="ltr">@{githubUser}</span>
-            </div>
-          ) : (
-            <button 
-              onClick={() => setSettingsOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-950/30 border border-amber-800/40 text-amber-300 hover:bg-amber-900/40 text-xs transition-colors cursor-pointer"
-            >
-              <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-              <span>اتصال گیت‌هاب</span>
-            </button>
+        <button 
+          onClick={() => setSettingsOpen(true)}
+          className="relative p-2 rounded-lg bg-[#12141c] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors cursor-pointer"
+          title="تنظیمات و کلیدها"
+        >
+          <Settings className="w-4 h-4" />
+          {/* Subtle green indicator right on the settings icon if connected */}
+          {githubUser && (
+            <span className="absolute top-1 left-1 w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></span>
           )}
-
-          <button 
-            onClick={() => setSettingsOpen(true)}
-            className="p-2 rounded-lg bg-[#12141c] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors cursor-pointer"
-            title="تنظیمات و کلیدها"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-        </div>
+        </button>
       </header>
 
       {/* 2. CHAT TIMELINE */}
@@ -333,7 +307,7 @@ Respond STRICTLY with valid JSON:
             </div>
             <h2 className="text-base md:text-lg font-bold text-white mb-1.5">چه رباتی می‌خواهید بسازید؟</h2>
             <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
-              ایده ربات خود را بنویسید تا کد TypeScript (grammY) آن تولید و روی لبه ابری مستقر شود.
+              ایده ربات خود را بنویسید تا کد آن تولید و مستقر شود.
             </p>
           </div>
         ) : (
@@ -511,16 +485,16 @@ Respond STRICTLY with valid JSON:
         {loading && (
           <div className="flex items-center gap-2 text-xs text-indigo-400 bg-[#10121a] border border-slate-800 px-3 py-2 rounded-xl self-start shadow">
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            <span>ایجنت در حال تفکر و پردازش...</span>
+            <span>ایجنت در حال پردازش...</span>
           </div>
         )}
 
         <div ref={messagesEndRef} />
       </main>
 
-      {/* 3. PROMPT INPUT BAR (Spacious, balanced, beautiful action bar) */}
+      {/* 3. PROMPT INPUT BAR (Send button firmly on the RIGHT side, clean placeholder) */}
       <div className="fixed bottom-0 left-0 right-0 p-3 bg-[#07080b]/95 border-t border-slate-800 backdrop-blur-md z-20">
-        <div className="max-w-3xl w-full mx-auto bg-[#10121a] border border-slate-800 rounded-2xl p-2.5 focus-within:border-indigo-500/80 transition-colors shadow-2xl">
+        <div className="max-w-3xl w-full mx-auto bg-[#10121a] border border-slate-800 rounded-2xl p-2.5 focus-within:border-indigo-500/80 transition-colors shadow-2xl flex flex-col gap-2">
           
           <textarea 
             ref={textareaRef}
@@ -537,18 +511,12 @@ Respond STRICTLY with valid JSON:
                 handleSendMessage();
               }
             }}
-            placeholder="ایده یا نیازمندی ربات را شرح دهید... (مثال: ربات ارسال نرخ ارز و طلا، یا ربات دریافت پیام ناشناس)"
+            placeholder="ایده ربات خود را بنویسید..."
             className="w-full bg-transparent text-white text-xs md:text-sm placeholder-slate-500 focus:outline-none resize-none leading-relaxed min-h-[48px] max-h-[160px] px-2 py-1"
           />
 
-          <div className="flex items-center justify-between pt-2 border-t border-slate-800/60 mt-1 px-1">
-            <span className="text-[11px] text-slate-500 hidden sm:inline">
-              اینتر: خط جدید • برای ارسال کلیک کنید
-            </span>
-            <span className="text-[11px] text-slate-500 sm:hidden">
-              اینتر: خط بعد
-            </span>
-
+          {/* Action Row: Send button on the RIGHT side */}
+          <div className="flex items-center justify-start pt-1.5 border-t border-slate-800/60 px-1">
             <button 
               onClick={handleSendMessage}
               disabled={loading || !input.trim()}
@@ -562,13 +530,13 @@ Respond STRICTLY with valid JSON:
         </div>
       </div>
 
-      {/* 4. SETTINGS MODAL */}
+      {/* 4. SETTINGS MODAL (Keys menu with status light inside) */}
       {settingsOpen && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-3">
           <div className="bg-[#0f1118] border border-slate-800 rounded-2xl max-w-md w-full p-4 flex flex-col gap-3.5 max-h-[90vh] overflow-y-auto text-xs">
             
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <h3 className="font-bold text-white text-sm">تنظیمات و کلیدهای ارتباطی</h3>
+              <h3 className="font-bold text-white text-sm">تنظیمات و کلیدها</h3>
               <button onClick={() => setSettingsOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
@@ -595,12 +563,27 @@ Respond STRICTLY with valid JSON:
               />
             </div>
 
-            {/* 2. GitHub with live validation status */}
+            {/* 2. GitHub (Status light right here inside keys menu!) */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-slate-200 font-medium">اتصال به گیت‌هاب (Personal Access Token)</label>
+                <div className="flex items-center gap-2">
+                  <label className="text-slate-200 font-medium">حساب گیت‌هاب</label>
+                  {/* Status light inside keys menu */}
+                  {githubUser ? (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/80 text-emerald-400 text-[10px]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                      متصل: {githubUser}
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                      غیرمتصل
+                    </span>
+                  )}
+                </div>
+
                 <a href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=Motherboter" target="_blank" rel="noreferrer" className="text-[10px] text-indigo-400 hover:underline flex items-center gap-1">
-                  ساخت توکن در گیت‌هاب <ExternalLink className="w-3 h-3" />
+                  ساخت توکن <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
               
@@ -614,7 +597,7 @@ Respond STRICTLY with valid JSON:
                     setGithubToken(val);
                     verifyGitHubToken(val);
                   }}
-                  placeholder="ghp_..."
+                  placeholder="توکن شخصی: ghp_..."
                   className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none focus:border-indigo-500"
                 />
                 <button
@@ -623,28 +606,16 @@ Respond STRICTLY with valid JSON:
                   disabled={ghChecking || !githubToken.trim()}
                   className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs shrink-0 cursor-pointer disabled:opacity-40"
                 >
-                  {ghChecking ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "بررسی"}
+                  {ghChecking ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "تست"}
                 </button>
               </div>
 
-              {/* Status display */}
-              <div className="mt-1.5">
-                {githubUser ? (
-                  <div className="flex items-center gap-1.5 text-emerald-400 text-[11px] bg-emerald-950/30 border border-emerald-900/50 p-1.5 rounded-lg">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>متصل شد: کاربر <strong>@{githubUser}</strong> با دسترسی مخازن ✓</span>
-                  </div>
-                ) : ghError ? (
-                  <div className="flex items-center gap-1.5 text-rose-400 text-[11px] bg-rose-950/30 border border-rose-900/50 p-1.5 rounded-lg">
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    <span>{ghError}</span>
-                  </div>
-                ) : (
-                  <p className="text-[10px] text-slate-500">
-                    توکن گیت‌هاب با دسترسی repo را وارد کنید تا استقرار مستقیم بدون خطا انجام شود.
-                  </p>
-                )}
-              </div>
+              {ghError && (
+                <div className="mt-1 text-rose-400 text-[10px] flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>{ghError}</span>
+                </div>
+              )}
             </div>
 
             {/* 3. Cloudflare */}
