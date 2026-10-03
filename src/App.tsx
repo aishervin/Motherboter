@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { 
   Bot, Settings, Send, RefreshCw, Copy, Check, Download, 
-  Terminal, Code, Play, CheckCircle2, AlertCircle, X, ExternalLink,
-  ChevronDown, ChevronUp, Github, Sparkles, Cloud, ArrowUpRight
+  Terminal, Code, Play, CheckCircle2, X, Github, Sparkles
 } from "lucide-react";
 
 interface AgentBlock {
@@ -29,46 +28,26 @@ interface ChatMessage {
 const GITHUB_CLIENT_ID = "Ov23liRlVQJ53msMFK4d";
 
 export default function App() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'init',
-      sender: 'agent',
-      text: 'درود! من Motherboter هستم؛ ایجنت اختصاصی شما برای طراحی، برنامه‌نویسی و استقرار بدون سرور ربات‌های تلگرام روی لبه ابری Cloudflare Workers.\n\nمی‌خواهید چه رباتی برایتان بسازم؟ (مثلاً: ربات ارسال قیمت لحظه‌ای ارز، ربات فروشگاهی، ربات دانلودر، یا ربات پشتیبانی و ارتباط با ادمین)',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      blocks: [
-        {
-          type: 'terminal',
-          title: 'راه‌اندازی محیط و پکیج‌ها',
-          command: 'npx wrangler init motherbot-worker',
-          logs: [
-            'سیستم در حال آماده‌سازی فریم‌ورک grammY v1.35...',
-            'پیکربندی هوش مصنوعی Google Gemini...',
-            'محیط اجرا روی لبه کلودفلر آماده دریافت دستورات شماست ✓'
-          ]
-        }
-      ]
-    }
-  ]);
-
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Active Bot Code in workspace
+  // Active workspace code
   const [activeCode, setActiveCode] = useState(`import { Bot, webhookCallback } from "grammy";
 
 const bot = new Bot(process.env.BOT_TOKEN || "");
 
 bot.command("start", async (ctx) => {
-  await ctx.reply("سلام! ربات تلگرام شما فعال شد.\\n\\nدستورات فعال:\\n/start - شروع\\n/help - راهنما");
+  await ctx.reply("سلام! ربات تلگرام فعال است.\\n/start - شروع\\n/help - راهنما");
 });
 
 bot.command("help", async (ctx) => {
-  await ctx.reply("راهنما: این ربات روی Cloudflare Workers در حال اجراست.");
+  await ctx.reply("راهنما: این ربات روی Cloudflare Workers مستقر شده است.");
 });
 
 bot.on("message:text", async (ctx) => {
-  await ctx.reply(\`پیام دریافت شد: \${ctx.message.text}\`);
+  await ctx.reply(\`پیام شما: \${ctx.message.text}\`);
 });
 
 export default {
@@ -86,22 +65,18 @@ export default {
   const [tgToken, setTgToken] = useState(() => localStorage.getItem("mb_tg_token") || "");
   const [repoName, setRepoName] = useState(() => localStorage.getItem("mb_repo_name") || "motherbot-worker");
 
-  // Track deploying status per block
   const [deployStatus, setDeployStatus] = useState<{ [key: string]: 'idle' | 'deploying' | 'success' | 'error' }>({});
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle GitHub OAuth callback if present
+  // Handle GitHub OAuth callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const codeParam = params.get('code');
-    if (codeParam) {
+    if (params.get('code')) {
       window.history.replaceState({}, document.title, window.location.pathname);
-      addAgentMessage('کد تایید اتصال گیت‌هاب دریافت شد.');
     }
     if (githubToken && !githubUser) {
       fetch("https://api.github.com/user", {
@@ -126,7 +101,7 @@ export default {
     ]);
   };
 
-  // Agent Communication (Client-Side Direct Gemini with Server Fallback)
+  // Direct AI Call
   const handleSendMessage = async () => {
     const userPrompt = input.trim();
     if (!userPrompt || loading) return;
@@ -143,24 +118,20 @@ export default {
     try {
       let resultData: { message: string; blocks?: AgentBlock[] };
 
-      const systemPrompt = `You are Motherboter AI Agent, an autonomous Telegram Bot engineer and Cloudflare Workers specialist.
-Communicate naturally in Persian.
-When the user asks you to build, customize, or deploy a Telegram bot, respond with step-by-step guidance.
-Generate production-ready grammY code, show realistic terminal operations, provide live testing, and offer deployment actions when appropriate.
-
-Respond STRICTLY with valid JSON matching this schema:
+      const systemPrompt = `You are Motherboter AI Agent, an autonomous Telegram Bot engineer using 'grammY' framework on Cloudflare Workers.
+Communicate naturally and concisely in Persian. Do NOT write unnecessary tutorials or essays.
+Respond STRICTLY with valid JSON:
 {
-  "message": "توضیح کوتاه، تمیز و حرفه‌ای به فارسی درباره اقدامات انجام شده",
+  "message": "پاسخ کوتاه و مرتبط به فارسی",
   "blocks": [
-    // Include blocks appropriate for this step:
-    // { "type": "terminal", "title": "کامپایل و بیلد", "command": "npx wrangler deploy --dry-run", "logs": ["تحلیل ساختار هندلرها...", "تایید سینتکس تایپ‌اسکریپت ✓"] }
-    // { "type": "code", "filename": "src/index.ts", "code": "/* کامل سورس کد grammY */" }
+    // Include relevant blocks:
+    // { "type": "terminal", "title": "بیلد و بررسی", "command": "npx wrangler check", "logs": ["کامپایل موفق ✓"] }
+    // { "type": "code", "filename": "src/index.ts", "code": "/* سورس کد کامل تایپ‌اسکریپت */" }
     // { "type": "simulator", "botName": "نام ربات", "welcome": "پیام استارت ربات در شبیه‌ساز" }
-    // { "type": "deploy", "repoName": "motherbot-worker", "summary": "آماده استقرار روی مخزن گیت‌هاب و لبه کلودفلر" }
+    // { "type": "deploy", "repoName": "motherbot-worker", "summary": "آماده استقرار روی مخزن گیت‌هاب" }
   ]
 }`;
 
-      // 1. Direct Call if user has entered their key (AQ... or AIza...)
       if (geminiKey.trim()) {
         const cleanKey = geminiKey.trim();
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${cleanKey}`;
@@ -180,14 +151,13 @@ Respond STRICTLY with valid JSON matching this schema:
 
         if (!res.ok) {
           const errBody = await res.json();
-          throw new Error(errBody.error?.message || "خطا در برقراری ارتباط با مدل هوش مصنوعی");
+          throw new Error(errBody.error?.message || "خطا در هوش مصنوعی");
         }
 
         const data = await res.json();
         const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
         resultData = JSON.parse(rawJson);
       } else {
-        // Fallback to server endpoint
         const serverRes = await fetch("/api/generate-bot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -195,12 +165,11 @@ Respond STRICTLY with valid JSON matching this schema:
         });
 
         if (!serverRes.ok) {
-          throw new Error("لطفاً کلید هوش مصنوعی را در تنظیمات ⚙️ وارد کنید.");
+          throw new Error("لطفاً کلید جمینی را در تنظیمات ⚙️ وارد کنید.");
         }
         resultData = await serverRes.json();
       }
 
-      // Update current code if a code block was returned
       if (resultData.blocks) {
         const codeBlock = resultData.blocks.find(b => b.type === 'code' && b.code);
         if (codeBlock?.code) {
@@ -208,32 +177,22 @@ Respond STRICTLY with valid JSON matching this schema:
         }
       }
 
-      addAgentMessage(resultData.message || "درخواست شما پردازش شد.", resultData.blocks);
+      addAgentMessage(resultData.message || "انجام شد.", resultData.blocks);
     } catch (err: any) {
-      addAgentMessage(`خطا: ${err.message}`, [
-        {
-          type: 'terminal',
-          title: 'گزارش خطای سیستم',
-          command: 'agent.handleError()',
-          logs: [
-            err.message,
-            'می‌توانید کلید معتبر جمینی را از منوی تنظیمات ⚙️ ثبت کنید.'
-          ]
-        }
-      ]);
+      addAgentMessage(`خطا: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Perform GitHub & Cloudflare Deployment for a specific block
-  const executeDeployBlock = async (blockId: string, customRepo?: string) => {
+  // Deploy to GitHub
+  const executeDeployBlock = async (blockKey: string, customRepo?: string) => {
     if (!githubToken.trim()) {
       setSettingsOpen(true);
       return;
     }
 
-    setDeployStatus(prev => ({ ...prev, [blockId]: 'deploying' }));
+    setDeployStatus(prev => ({ ...prev, [blockKey]: 'deploying' }));
 
     try {
       const headers = {
@@ -267,7 +226,7 @@ Respond STRICTLY with valid JSON matching this schema:
           method: "PUT",
           headers,
           body: JSON.stringify({
-            message: `chore: deploy ${path} via Motherboter Agent`,
+            message: `chore: deploy ${path}`,
             content: btoa(unescape(encodeURIComponent(content))),
             sha
           })
@@ -283,16 +242,16 @@ Respond STRICTLY with valid JSON matching this schema:
         dependencies: { grammy: "^1.35.0" }
       }, null, 2));
 
-      setDeployStatus(prev => ({ ...prev, [blockId]: 'success' }));
-      addAgentMessage(`پروژه با موفقیت روی گیت‌هاب مستقر شد:\nhttps://github.com/${username}/${targetRepo}`);
+      setDeployStatus(prev => ({ ...prev, [blockKey]: 'success' }));
+      addAgentMessage(`پروژه با موفقیت دیپلوی شد: github.com/${username}/${targetRepo}`);
     } catch (err: any) {
-      setDeployStatus(prev => ({ ...prev, [blockId]: 'error' }));
-      addAgentMessage(`خطا در استقرار: ${err.message}`);
+      setDeployStatus(prev => ({ ...prev, [blockKey]: 'error' }));
+      addAgentMessage(`خطا در دیپلوی: ${err.message}`);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#07080b] text-slate-200 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
+    <div dir="rtl" className="min-h-screen bg-[#07080b] text-slate-100 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
       
       {/* 1. MINIMAL HEADER */}
       <header className="h-12 border-b border-slate-800 bg-[#0b0c11] px-4 flex items-center justify-between shrink-0 z-30">
@@ -301,196 +260,204 @@ Respond STRICTLY with valid JSON matching this schema:
             <Bot className="w-3.5 h-3.5" />
           </div>
           <span className="font-bold text-sm text-white">Motherboter</span>
-          <span className="text-[10px] font-mono text-indigo-400 bg-indigo-500/10 px-1.5 py-0.2 rounded border border-indigo-500/20">
-            Agent
-          </span>
         </div>
 
         <button 
           onClick={() => setSettingsOpen(true)}
-          className="p-1.5 rounded-lg bg-[#12141c] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors"
-          title="تنظیمات و کلیدها"
+          className="p-1.5 rounded-lg bg-[#12141c] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors cursor-pointer"
+          title="تنظیمات"
         >
           <Settings className="w-4 h-4" />
         </button>
       </header>
 
-      {/* 2. CHAT TIMELINE (EVERYTHING HAPPENS INLINE) */}
+      {/* 2. CHAT TIMELINE */}
       <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-28 max-w-3xl w-full mx-auto flex flex-col gap-4">
-        {messages.map((msg) => (
-          <div 
-            key={msg.id}
-            className={`flex flex-col gap-2.5 ${msg.sender === 'user' ? 'items-end' : 'items-start'} w-full`}
-          >
-            {/* Main Message Bubble */}
-            <div 
-              className={`p-3.5 rounded-2xl text-xs md:text-sm leading-relaxed max-w-[92%] ${
-                msg.sender === 'user' 
-                  ? 'bg-indigo-600 text-white rounded-br-none' 
-                  : 'bg-[#10121a] text-slate-100 border border-slate-800 rounded-bl-none shadow-sm'
-              }`}
-            >
-              <div className="whitespace-pre-line">{msg.text}</div>
-              <div className="text-[10px] text-right mt-1 opacity-60 font-mono">{msg.time}</div>
+        
+        {messages.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center my-auto py-16 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-3 shadow-inner">
+              <Bot className="w-6 h-6" />
             </div>
-
-            {/* Dynamic Inline Blocks Rendered Right in Timeline */}
-            {msg.blocks && msg.blocks.map((block, idx) => {
-              const blockKey = `${msg.id}-${idx}`;
-
-              // 1. INLINE TERMINAL
-              if (block.type === 'terminal') {
-                return (
-                  <div key={idx} className="w-full bg-[#050608] border border-slate-800/90 rounded-xl overflow-hidden font-mono text-xs shadow-lg">
-                    <div className="bg-[#0c0e14] px-3 py-1.5 border-b border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 inline-block"></span>
-                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block"></span>
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block"></span>
-                        <span className="ml-2 font-medium text-slate-300">{block.title || 'ترمینال'}</span>
-                      </div>
-                      {block.command && <span className="text-slate-500 text-[10px]">{block.command}</span>}
-                    </div>
-                    <div className="p-3 text-slate-300 flex flex-col gap-1 leading-relaxed bg-[#050608]">
-                      {block.command && (
-                        <div className="text-indigo-400 flex items-center gap-1 mb-1">
-                          <span>$</span>
-                          <span>{block.command}</span>
-                        </div>
-                      )}
-                      {block.logs?.map((log, lIdx) => (
-                        <div key={lIdx} className="flex items-center gap-1.5 text-slate-400 text-[11px]">
-                          <span className="text-emerald-400">›</span>
-                          <span>{log}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              }
-
-              // 2. INLINE CODE EDITOR
-              if (block.type === 'code' && block.code) {
-                return (
-                  <div key={idx} className="w-full bg-[#0b0c12] border border-slate-800 rounded-xl overflow-hidden font-mono text-xs shadow-lg">
-                    <div className="bg-[#11131b] px-3 py-2 border-b border-slate-800 flex items-center justify-between">
-                      <span className="text-indigo-300 text-[11px] flex items-center gap-1.5">
-                        <Code className="w-3.5 h-3.5 text-indigo-400" />
-                        {block.filename || 'src/index.ts'}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => navigator.clipboard.writeText(block.code || '')}
-                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[11px] flex items-center gap-1 cursor-pointer"
-                        >
-                          <Copy className="w-3 h-3" />
-                          <span>کپی سورس</span>
-                        </button>
-                        <button 
-                          onClick={() => {
-                            const blob = new Blob([block.code || ''], { type: 'text/typescript' });
-                            const a = document.createElement('a');
-                            a.href = URL.createObjectURL(blob);
-                            a.download = block.filename || 'index.ts';
-                            a.click();
-                          }}
-                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[11px] flex items-center gap-1 cursor-pointer"
-                        >
-                          <Download className="w-3 h-3" />
-                          <span>دانلود</span>
-                        </button>
-                      </div>
-                    </div>
-                    <textarea 
-                      value={block.code}
-                      onChange={e => {
-                        const newCode = e.target.value;
-                        block.code = newCode;
-                        setActiveCode(newCode);
-                      }}
-                      spellCheck={false}
-                      className="w-full p-3 bg-transparent text-indigo-200 font-mono text-xs leading-relaxed resize-none focus:outline-none min-h-[160px] max-h-[300px]"
-                    />
-                  </div>
-                );
-              }
-
-              // 3. INLINE TELEGRAM SIMULATOR
-              if (block.type === 'simulator') {
-                return <InlineSimulator key={idx} botName={block.botName} welcome={block.welcome} code={activeCode} />;
-              }
-
-              // 4. INLINE DEPLOY ACTION
-              if (block.type === 'deploy') {
-                const status = deployStatus[blockKey] || 'idle';
-                return (
-                  <div key={idx} className="w-full bg-[#10121a] border border-indigo-950/60 rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
-                    <div>
-                      <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                        آماده استقرار خودکار پروژه
-                      </h4>
-                      <p className="text-[11px] text-slate-400 mt-0.5">{block.summary || 'ارسال کدها به ریپازیتوری پرایوت گیت‌هاب و فعال‌سازی در ورکرز'}</p>
-                    </div>
-
-                    <button 
-                      onClick={() => executeDeployBlock(blockKey, block.repoName)}
-                      disabled={status === 'deploying' || status === 'success'}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                        status === 'success'
-                          ? 'bg-emerald-600 text-white'
-                          : status === 'deploying'
-                          ? 'bg-indigo-700 text-white opacity-80'
-                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow'
-                      }`}
-                    >
-                      {status === 'deploying' ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span>در حال ارسال...</span>
-                        </>
-                      ) : status === 'success' ? (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>دیپلوی شد ✓</span>
-                        </>
-                      ) : (
-                        <>
-                          <Github className="w-3.5 h-3.5" />
-                          <span>دیپلوی روی گیت‌هاب</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                );
-              }
-
-              return null;
-            })}
-
+            <h2 className="text-base md:text-lg font-bold text-white mb-1.5">چه رباتی می‌خواهید بسازید؟</h2>
+            <p className="text-xs text-slate-400 max-w-xs">ایده یا نیازمندی خود را بنویسید تا سورس‌کد، تست و استقرار آن آغاز شود.</p>
           </div>
-        ))}
+        ) : (
+          messages.map((msg) => (
+            <div 
+              key={msg.id}
+              className={`flex flex-col gap-2.5 ${msg.sender === 'user' ? 'items-start' : 'items-end'} w-full`}
+            >
+              {/* Message Bubble */}
+              <div 
+                className={`p-3.5 rounded-2xl text-xs md:text-sm leading-relaxed max-w-[92%] ${
+                  msg.sender === 'user' 
+                    ? 'bg-indigo-600 text-white rounded-tr-none' 
+                    : 'bg-[#10121a] text-slate-100 border border-slate-800 rounded-tl-none shadow-sm'
+                }`}
+              >
+                <div className="whitespace-pre-line text-right">{msg.text}</div>
+                <div className="text-[10px] text-left mt-1 opacity-60 font-mono" dir="ltr">{msg.time}</div>
+              </div>
+
+              {/* Dynamic Inline Blocks */}
+              {msg.blocks && msg.blocks.map((block, idx) => {
+                const blockKey = `${msg.id}-${idx}`;
+
+                // 1. INLINE TERMINAL
+                if (block.type === 'terminal') {
+                  return (
+                    <div key={idx} dir="ltr" className="w-full bg-[#050608] border border-slate-800 rounded-xl overflow-hidden font-mono text-xs shadow-lg">
+                      <div className="bg-[#0c0e14] px-3 py-1.5 border-b border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span>
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+                          <span className="ml-2 font-medium text-slate-300">{block.title || 'Terminal'}</span>
+                        </div>
+                        {block.command && <span className="text-slate-500 text-[10px]">{block.command}</span>}
+                      </div>
+                      <div className="p-3 text-slate-300 flex flex-col gap-1 leading-relaxed">
+                        {block.command && (
+                          <div className="text-indigo-400 flex items-center gap-1 mb-1">
+                            <span>$</span>
+                            <span>{block.command}</span>
+                          </div>
+                        )}
+                        {block.logs?.map((log, lIdx) => (
+                          <div key={lIdx} className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                            <span className="text-emerald-400">›</span>
+                            <span>{log}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // 2. INLINE CODE EDITOR
+                if (block.type === 'code' && block.code) {
+                  return (
+                    <div key={idx} dir="ltr" className="w-full bg-[#0b0c12] border border-slate-800 rounded-xl overflow-hidden font-mono text-xs shadow-lg">
+                      <div className="bg-[#11131b] px-3 py-2 border-b border-slate-800 flex items-center justify-between">
+                        <span className="text-indigo-300 text-[11px] flex items-center gap-1.5">
+                          <Code className="w-3.5 h-3.5 text-indigo-400" />
+                          {block.filename || 'src/index.ts'}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => navigator.clipboard.writeText(block.code || '')}
+                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[11px] flex items-center gap-1 cursor-pointer"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                          </button>
+                          <button 
+                            onClick={() => {
+                              const blob = new Blob([block.code || ''], { type: 'text/typescript' });
+                              const a = document.createElement('a');
+                              a.href = URL.createObjectURL(blob);
+                              a.download = block.filename || 'index.ts';
+                              a.click();
+                            }}
+                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[11px] flex items-center gap-1 cursor-pointer"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Download</span>
+                          </button>
+                        </div>
+                      </div>
+                      <textarea 
+                        value={block.code}
+                        onChange={e => {
+                          const newCode = e.target.value;
+                          block.code = newCode;
+                          setActiveCode(newCode);
+                        }}
+                        spellCheck={false}
+                        className="w-full p-3 bg-transparent text-indigo-200 font-mono text-xs leading-relaxed resize-none focus:outline-none min-h-[160px] max-h-[300px]"
+                      />
+                    </div>
+                  );
+                }
+
+                // 3. INLINE TELEGRAM SIMULATOR
+                if (block.type === 'simulator') {
+                  return <InlineSimulator key={idx} botName={block.botName} welcome={block.welcome} code={activeCode} />;
+                }
+
+                // 4. INLINE DEPLOY ACTION
+                if (block.type === 'deploy') {
+                  const status = deployStatus[blockKey] || 'idle';
+                  return (
+                    <div key={idx} className="w-full bg-[#10121a] border border-slate-800 rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+                      <div>
+                        <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                          آماده دیپلوی
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5">{block.summary || 'استقرار روی گیت‌هاب و لبه ابری کلودفلر'}</p>
+                      </div>
+
+                      <button 
+                        onClick={() => executeDeployBlock(blockKey, block.repoName)}
+                        disabled={status === 'deploying' || status === 'success'}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                          status === 'success'
+                            ? 'bg-emerald-600 text-white'
+                            : status === 'deploying'
+                            ? 'bg-indigo-700 text-white opacity-80'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow'
+                        }`}
+                      >
+                        {status === 'deploying' ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>در حال ارسال...</span>
+                          </>
+                        ) : status === 'success' ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>دیپلوی شد ✓</span>
+                          </>
+                        ) : (
+                          <>
+                            <Github className="w-3.5 h-3.5" />
+                            <span>دیپلوی به گیت‌هاب</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                }
+
+                return null;
+              })}
+
+            </div>
+          ))
+        )}
 
         {loading && (
-          <div className="flex items-center gap-2 text-xs text-indigo-400 font-mono bg-[#10121a] border border-slate-800/80 px-3 py-2 rounded-xl self-start">
+          <div className="flex items-center gap-2 text-xs text-indigo-400 bg-[#10121a] border border-slate-800 px-3 py-2 rounded-xl self-start">
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            <span>ایجنت در حال تحلیل، برنامه‌نویسی و ساخت محیط است...</span>
+            <span>در حال پردازش...</span>
           </div>
         )}
 
         <div ref={messagesEndRef} />
       </main>
 
-      {/* 3. PROMPT INPUT BAR (Roomy, human placeholder) */}
-      <div className="fixed bottom-0 left-0 right-0 p-3 bg-[#07080b]/95 border-t border-slate-800/80 backdrop-blur-md z-20">
+      {/* 3. PROMPT INPUT BAR */}
+      <div className="fixed bottom-0 left-0 right-0 p-3 bg-[#07080b]/95 border-t border-slate-800 backdrop-blur-md z-20">
         <div className="max-w-3xl w-full mx-auto flex items-center gap-2">
           <input 
             type="text"
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-            placeholder="مثلاً: یک ربات قیمت ارز با منوی دکمه‌ای بساز..."
-            className="flex-1 bg-[#10121a] border border-slate-800 rounded-xl px-4 py-2.5 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+            placeholder="مثلاً: ربات ارسال قیمت لحظه‌ای طلا و ارز بساز..."
+            className="flex-1 bg-[#10121a] border border-slate-800 rounded-xl px-4 py-2.5 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
           <button 
             onClick={handleSendMessage}
@@ -509,8 +476,8 @@ Respond STRICTLY with valid JSON matching this schema:
           <div className="bg-[#0f1118] border border-slate-800 rounded-2xl max-w-md w-full p-4 flex flex-col gap-3.5 max-h-[90vh] overflow-y-auto text-xs">
             
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <h3 className="font-bold text-white">تنظیمات و کلیدهای ارتباطی</h3>
-              <button onClick={() => setSettingsOpen(false)} className="text-slate-400 hover:text-white">
+              <h3 className="font-bold text-white">تنظیمات و کلیدها</h3>
+              <button onClick={() => setSettingsOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -518,13 +485,14 @@ Respond STRICTLY with valid JSON matching this schema:
             {/* Gemini */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-slate-300 font-medium">کلید Gemini API</label>
+                <label className="text-slate-300 font-medium">کلید Gemini</label>
                 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[10px] text-indigo-400 hover:underline">
                   دریافت کلید
                 </a>
               </div>
               <input 
                 type="password"
+                dir="ltr"
                 value={geminiKey}
                 onChange={e => {
                   setGeminiKey(e.target.value);
@@ -549,29 +517,31 @@ Respond STRICTLY with valid JSON matching this schema:
                     const redirectUri = window.location.origin + window.location.pathname;
                     window.location.href = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo,workflow`;
                   }}
-                  className="flex-1 bg-[#24292e] hover:bg-[#2f363d] text-white py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1.5 border border-slate-700"
+                  className="flex-1 bg-[#24292e] hover:bg-[#2f363d] text-white py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1.5 border border-slate-700 cursor-pointer"
                 >
                   <Github className="w-3.5 h-3.5" />
-                  <span>اتصال یک‌کلیک (OAuth)</span>
+                  <span>ورود با گیت‌هاب (OAuth)</span>
                 </button>
               </div>
               <input 
                 type="password"
+                dir="ltr"
                 value={githubToken}
                 onChange={e => {
                   setGithubToken(e.target.value);
                   localStorage.setItem("mb_gh_token", e.target.value.trim());
                 }}
-                placeholder="یا وارد کردن Personal Access Token (ghp_...)"
+                placeholder="یا توکن: ghp_..."
                 className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none"
               />
             </div>
 
             {/* Repo Name */}
             <div>
-              <label className="block text-slate-300 font-medium mb-1">نام ریپازیتوری در گیت‌هاب</label>
+              <label className="block text-slate-300 font-medium mb-1">نام مخزن در گیت‌هاب</label>
               <input 
                 type="text"
+                dir="ltr"
                 value={repoName}
                 onChange={e => {
                   setRepoName(e.target.value);
@@ -584,13 +554,14 @@ Respond STRICTLY with valid JSON matching this schema:
             {/* Telegram Bot Token */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-slate-300 font-medium">توکن ربات تلگرام (اختیاری)</label>
+                <label className="text-slate-300 font-medium">توکن تلگرام (اختیاری)</label>
                 <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-[10px] text-indigo-400 hover:underline">
                   BotFather@
                 </a>
               </div>
               <input 
                 type="password"
+                dir="ltr"
                 value={tgToken}
                 onChange={e => {
                   setTgToken(e.target.value);
@@ -603,9 +574,9 @@ Respond STRICTLY with valid JSON matching this schema:
 
             <button 
               onClick={() => setSettingsOpen(false)}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-xl text-xs transition-colors mt-2"
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-xl text-xs transition-colors mt-2 cursor-pointer"
             >
-              ذخیره تنظیمات
+              ذخیره
             </button>
 
           </div>
@@ -616,10 +587,10 @@ Respond STRICTLY with valid JSON matching this schema:
   );
 }
 
-// INLINE TELEGRAM SIMULATOR COMPONENT
+// INLINE SIMULATOR
 function InlineSimulator({ botName, welcome, code }: { botName?: string; welcome?: string; code: string }) {
   const [messages, setMessages] = useState<Array<{ sender: 'user' | 'bot'; text: string }>>([
-    { sender: 'bot', text: welcome || 'سلام! شبیه‌ساز فعال شد. دستوری مثل /start یا پیامی ارسال کنید.' }
+    { sender: 'bot', text: welcome || 'سلام! شبیه‌ساز آماده است. دستور /start را بفرستید.' }
   ]);
   const [text, setText] = useState("");
 
@@ -630,18 +601,18 @@ function InlineSimulator({ botName, welcome, code }: { botName?: string; welcome
     setText("");
 
     setTimeout(() => {
-      let reply = `پاسخ ربات به: ${userMsg}`;
+      let reply = `پاسخ به: ${userMsg}`;
       if (userMsg === "/start") {
-        reply = welcome || "سلام! ربات تلگرام فعال است.\nدستورات فعال:\n/start - شروع\n/help - راهنما";
+        reply = welcome || "سلام! ربات تلگرام فعال شد.\n/start - شروع\n/help - راهنما";
       } else if (userMsg === "/help") {
-        reply = "راهنما:\nاین ربات بر بستر کلودفلر ورکرز و فریم‌ورک grammY اجرا می‌شود.";
+        reply = "راهنما:\nاین ربات روی کلودفلر ورکرز با grammY اجرا می‌شود.";
       }
       setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
     }, 250);
   };
 
   return (
-    <div className="w-full bg-[#0b0c12] border border-slate-800 rounded-2xl overflow-hidden flex flex-col h-[320px] shadow-lg">
+    <div className="w-full bg-[#0b0c12] border border-slate-800 rounded-2xl overflow-hidden flex flex-col h-[300px] shadow-lg">
       <div className="bg-[#10121a] px-3 py-2 border-b border-slate-800 flex items-center justify-between text-xs">
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-[10px]">🤖</div>
@@ -649,7 +620,7 @@ function InlineSimulator({ botName, welcome, code }: { botName?: string; welcome
         </div>
         <button 
           onClick={() => setMessages([{ sender: 'bot', text: welcome || 'شبیه‌ساز ری‌استارت شد.' }])}
-          className="text-slate-400 hover:text-white text-[10px]"
+          className="text-slate-400 hover:text-white text-[10px] cursor-pointer"
         >
           پاکسازی
         </button>
@@ -661,8 +632,8 @@ function InlineSimulator({ botName, welcome, code }: { botName?: string; welcome
             key={i}
             className={`p-2 rounded-xl max-w-[85%] whitespace-pre-line text-xs ${
               m.sender === 'user'
-                ? 'bg-indigo-600 text-white self-end rounded-br-none'
-                : 'bg-[#141620] text-slate-200 border border-slate-800 self-start rounded-bl-none'
+                ? 'bg-indigo-600 text-white self-start rounded-tr-none'
+                : 'bg-[#141620] text-slate-200 border border-slate-800 self-end rounded-tl-none'
             }`}
           >
             {m.text}
@@ -676,7 +647,7 @@ function InlineSimulator({ botName, welcome, code }: { botName?: string; welcome
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
-          placeholder="تست دستور یا ارسال پیام..."
+          placeholder="ارسال پیام یا دستور..."
           className="flex-1 bg-[#141620] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none"
         />
         <button 
