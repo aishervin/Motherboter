@@ -1,0 +1,6 @@
+{
+  "name": "TeleWorker Studio — Telegram Bot & Cloudflare Deployment Wizard",
+  "description": "Interactive zero-to-one wizard for creating Telegram bots on GitHub and deploying them to Cloudflare Workers with AI-powered code generation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
