@@ -25,7 +25,7 @@ interface ChatMessage {
   blocks?: AgentBlock[];
 }
 
-const GITHUB_CLIENT_ID = "Ov23liRlVQJ53msMFK4d";
+const DEFAULT_CLIENT_ID = "Ov23liRlVQJ53msMFK4d";
 
 export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -56,8 +56,9 @@ export default {
   },
 };`);
 
-  // Credentials (Keys only, no repo name here!)
+  // Credentials
   const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem("mb_gemini_key") || "");
+  const [githubClientId, setGithubClientId] = useState(() => localStorage.getItem("mb_gh_client_id") || DEFAULT_CLIENT_ID);
   const [githubToken, setGithubToken] = useState(() => localStorage.getItem("mb_gh_token") || "");
   const [githubUser, setGithubUser] = useState(() => localStorage.getItem("mb_gh_user") || "");
   const [cfToken, setCfToken] = useState(() => localStorage.getItem("mb_cf_token") || "cfat_UE80AKq3LeBNdFq1NedtZPKmry3u10C0oWHF8GkP682c91ea");
@@ -69,6 +70,7 @@ export default {
   const [deployRepoNames, setDeployRepoNames] = useState<{ [key: string]: string }>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -109,6 +111,9 @@ export default {
     if (!userPrompt || loading) return;
 
     setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
     setLoading(true);
 
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -126,7 +131,6 @@ Respond STRICTLY with valid JSON:
 {
   "message": "پاسخ کوتاه و مرتبط به فارسی",
   "blocks": [
-    // Include relevant blocks:
     // { "type": "terminal", "title": "بیلد و بررسی", "command": "npx wrangler check", "logs": ["کامپایل موفق ✓"] }
     // { "type": "code", "filename": "src/index.ts", "code": "/* سورس کد کامل تایپ‌اسکریپت */" }
     // { "type": "simulator", "botName": "نام ربات", "welcome": "پیام استارت ربات در شبیه‌ساز" }
@@ -187,7 +191,7 @@ Respond STRICTLY with valid JSON:
     }
   };
 
-  // Deploy to GitHub (Asking repo name at deploy time!)
+  // Deploy to GitHub
   const executeDeployBlock = async (blockKey: string, customRepo?: string) => {
     if (!githubToken.trim()) {
       setSettingsOpen(true);
@@ -273,7 +277,7 @@ Respond STRICTLY with valid JSON:
       </header>
 
       {/* 2. CHAT TIMELINE */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-28 max-w-3xl w-full mx-auto flex flex-col gap-4">
+      <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-36 max-w-3xl w-full mx-auto flex flex-col gap-4">
         
         {messages.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center my-auto py-16 text-center">
@@ -387,7 +391,7 @@ Respond STRICTLY with valid JSON:
                   return <InlineSimulator key={idx} botName={block.botName} welcome={block.welcome} code={activeCode} />;
                 }
 
-                // 4. INLINE DEPLOY ACTION (Ask repo name right here!)
+                // 4. INLINE DEPLOY ACTION
                 if (block.type === 'deploy') {
                   const status = deployStatus[blockKey] || 'idle';
                   const currentRepoInput = deployRepoNames[blockKey] !== undefined ? deployRepoNames[blockKey] : (block.repoName || 'motherbot-worker');
@@ -404,7 +408,6 @@ Respond STRICTLY with valid JSON:
                         </div>
                       </div>
 
-                      {/* Repostiory name prompt right at deploy time! */}
                       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1 border-t border-slate-800/60">
                         <div className="flex-1 flex items-center bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs">
                           <span className="text-slate-400 text-[11px] shrink-0 ml-2">نام مخزن گیت‌هاب:</span>
@@ -468,29 +471,45 @@ Respond STRICTLY with valid JSON:
         <div ref={messagesEndRef} />
       </main>
 
-      {/* 3. PROMPT INPUT BAR (Send button conveniently positioned) */}
+      {/* 3. PROMPT INPUT BAR (Send button on the OPPOSITE side, Enter key adds new line!) */}
       <div className="fixed bottom-0 left-0 right-0 p-3 bg-[#07080b]/95 border-t border-slate-800 backdrop-blur-md z-20">
-        <div className="max-w-3xl w-full mx-auto relative flex items-center">
-          <input 
-            type="text"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-            placeholder="مثلاً: ربات ارسال قیمت لحظه‌ای طلا و ارز بساز..."
-            className="w-full bg-[#10121a] border border-slate-800 rounded-xl pr-4 pl-14 py-3 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-          />
+        <div className="max-w-3xl w-full mx-auto relative flex items-end">
+          
+          {/* Send Button on the OPPOSITE side (Right side!) */}
           <button 
             onClick={handleSendMessage}
             disabled={loading || !input.trim()}
-            className="absolute left-2 top-1.5 bottom-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-center gap-1 cursor-pointer"
+            className="absolute right-2.5 bottom-2.5 bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-xl text-xs font-medium transition-colors disabled:opacity-30 flex items-center justify-center cursor-pointer shadow z-10"
+            title="ارسال درخواست"
           >
-            {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">ارسال</span>
+            {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
+
+          {/* Multiline textarea: Enter adds a newline! Only button or Ctrl+Enter sends! */}
+          <textarea 
+            ref={textareaRef}
+            rows={1}
+            value={input}
+            onChange={e => {
+              setInput(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+              // Normal Enter just adds a new line naturally!
+            }}
+            placeholder="ایده ربات خود را بنویسید... (اینتر برای خط بعد، کلیک برای ارسال)"
+            className="w-full bg-[#10121a] border border-slate-800 rounded-2xl pr-12 pl-4 py-3 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none min-h-[46px] max-h-[140px] leading-relaxed"
+          />
+
         </div>
       </div>
 
-      {/* 4. SETTINGS MODAL (Keys only: Gemini, GitHub, Cloudflare, Telegram) */}
+      {/* 4. SETTINGS MODAL */}
       {settingsOpen && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-3">
           <div className="bg-[#0f1118] border border-slate-800 rounded-2xl max-w-md w-full p-4 flex flex-col gap-3.5 max-h-[90vh] overflow-y-auto text-xs">
@@ -528,14 +547,15 @@ Respond STRICTLY with valid JSON:
               <div className="flex items-center justify-between mb-1">
                 <label className="text-slate-300 font-medium">حساب گیت‌هاب</label>
                 <a href="https://github.com/settings/tokens/new?scopes=repo,workflow" target="_blank" rel="noreferrer" className="text-[10px] text-indigo-400 hover:underline">
-                  ساخت توکن
+                  ساخت Personal Token
                 </a>
               </div>
               <div className="flex items-center gap-2 mb-2">
                 <button 
                   onClick={() => {
-                    const redirectUri = window.location.origin + window.location.pathname;
-                    window.location.href = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo,workflow`;
+                    const cleanClientId = (githubClientId || DEFAULT_CLIENT_ID).trim();
+                    // Omit redirect_uri parameter so GitHub redirects automatically to the exact registered callback URL without any mismatch warning!
+                    window.location.href = `https://github.com/login/oauth/authorize?client_id=${cleanClientId}&scope=repo,workflow`;
                   }}
                   className="flex-1 bg-[#24292e] hover:bg-[#2f363d] text-white py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1.5 border border-slate-700 cursor-pointer"
                 >
@@ -543,20 +563,39 @@ Respond STRICTLY with valid JSON:
                   <span>ورود با گیت‌هاب (OAuth)</span>
                 </button>
               </div>
-              <input 
-                type="password"
-                dir="ltr"
-                value={githubToken}
-                onChange={e => {
-                  setGithubToken(e.target.value);
-                  localStorage.setItem("mb_gh_token", e.target.value.trim());
-                }}
-                placeholder="یا توکن دسترسی: ghp_..."
-                className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-2 text-white font-mono text-xs focus:outline-none"
-              />
+
+              <div className="mb-2">
+                <span className="text-[10px] text-slate-500 block mb-0.5">OAuth Client ID (اختیاری اگر اپ اختصاصی دارید):</span>
+                <input 
+                  type="text"
+                  dir="ltr"
+                  value={githubClientId}
+                  onChange={e => {
+                    setGithubClientId(e.target.value);
+                    localStorage.setItem("mb_gh_client_id", e.target.value.trim());
+                  }}
+                  placeholder={DEFAULT_CLIENT_ID}
+                  className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <span className="text-[10px] text-slate-500 block mb-0.5">یا توکن شخصی (Personal Access Token - مستقیم و بدون خطا):</span>
+                <input 
+                  type="password"
+                  dir="ltr"
+                  value={githubToken}
+                  onChange={e => {
+                    setGithubToken(e.target.value);
+                    localStorage.setItem("mb_gh_token", e.target.value.trim());
+                  }}
+                  placeholder="ghp_..."
+                  className="w-full bg-[#08090e] border border-slate-800 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none"
+                />
+              </div>
             </div>
 
-            {/* 3. Cloudflare (RESTORED!) */}
+            {/* 3. Cloudflare */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-slate-300 font-medium flex items-center gap-1.5">
@@ -599,7 +638,7 @@ Respond STRICTLY with valid JSON:
             {/* 4. Telegram Bot Token */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-slate-300 font-medium">توکن تلگرام (اختیاری)</label>
+                <label className="text-slate-300 font-medium">توکن ربات تلگرام (اختیاری)</label>
                 <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-[10px] text-indigo-400 hover:underline">
                   BotFather@
                 </a>
