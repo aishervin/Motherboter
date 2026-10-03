@@ -26,8 +26,17 @@ const APP_URL = process.env.APP_URL || "https://ais-dev-55yqokipqu7xmvgr6hpnqe-9
 // 1. Intelligent Agent Bot Code Generator
 app.post("/api/generate-bot", async (req, res) => {
   try {
-    const { message, currentCode, botName } = req.body;
+    const { message, currentCode, botName, geminiApiKey } = req.body;
+    const activeKey = geminiApiKey || process.env.GEMINI_API_KEY || "dummy-key";
 
+    const aiInstance = new GoogleGenAI({
+      apiKey: activeKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
     const systemInstruction = `You are TeleWorker AI Agent, an expert TypeScript and Telegram bot developer specializing in the 'grammY' framework for Cloudflare Workers.
 Your job is to chat with the developer, answer questions naturally, and when requested, generate or update the TypeScript bot code.
 Return JSON with:
@@ -37,14 +46,14 @@ Return JSON with:
 `;
 
     const prompt = `User message: "${message || 'سلام'}"
-Bot Name: "${botName || 'SmartBot'}"
+Bot Name: "${botName || 'Motherboter'}"
 Current Code:
 \`\`\`ts
 ${currentCode || '// No code yet'}
 \`\`\`
 `;
 
-    const response = await ai.models.generateContent({
+    const response = await aiInstance.models.generateContent({
       model: "gemini-3.8-flash",
       contents: prompt,
       config: {
