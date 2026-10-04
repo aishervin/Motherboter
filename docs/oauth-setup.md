@@ -1,4 +1,4 @@
-# OAuth setup
+# Connection setup
 
 OAuth secrets belong in Cloudflare Pages environment settings, never in Vite variables, browser storage, or Git.
 
@@ -12,15 +12,15 @@ In the GitHub OAuth App settings, use:
 
 The callback exchanges the authorization code on the server. The access token is held only in an AES-GCM encrypted, `HttpOnly`, `Secure`, `SameSite=Lax` cookie for up to eight hours. GitHub API calls are proxied through Pages Functions; the browser never receives the token.
 
-## Cloudflare
+## Cloudflare API token
 
-Cloudflare supports third-party OAuth clients. Create one from **Manage Account > OAuth clients** and choose the Authorization Code flow with `client_secret_post`. Register this callback:
+Connect with a user API token. The in-app token link preselects only `Account Settings: Read`, which is used to verify the token and list available accounts:
 
-`https://motherboter.pages.dev/auth/cloudflare/callback`
+`https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22account_settings%22%2C%22type%22%3A%22read%22%7D%5D&accountId=*&zoneId=all&name=Motherboter%20Cloudflare%20Connection`
 
-The app requests the `account.read` scope to list the accounts granted to the client. Cloudflare requires a domain-verified publisher before an OAuth client can be made public. The shared `pages.dev` hostname cannot prove domain ownership; use a custom domain you control, publish its required DNS TXT verification record, and then make the OAuth client public. Cloudflare may also let you use a private client, but only members of its parent account can authorize it.
+The token is sent to `/api/cloudflare/connect`, checked against the Cloudflare Accounts API, then stored only in an AES-GCM encrypted, `HttpOnly`, `Secure`, `SameSite=Lax` cookie for up to eight hours. The browser never writes this token to localStorage. Logout clears the cookie.
 
-The current Cloudflare OAuth route verifies the account connection; it does not yet deploy a Worker. Add only the Worker permissions needed when that deployment route is implemented. Account listing requires read access to account settings.
+This connection currently verifies access and lists accounts; it does not deploy a Worker. Add Worker permissions only when the deployment flow is implemented.
 
 ## Pages settings
 
@@ -31,9 +31,6 @@ Set these variables in the Pages project:
 - `GITHUB_CLIENT_ID` (plain text)
 - `GITHUB_CLIENT_SECRET` (secret)
 - `GITHUB_REDIRECT_URI` = `https://motherboter.pages.dev/auth/github/callback`
-- `CLOUDFLARE_CLIENT_ID` (plain text)
-- `CLOUDFLARE_CLIENT_SECRET` (secret)
-- `CLOUDFLARE_REDIRECT_URI` = `https://motherboter.pages.dev/auth/cloudflare/callback`
 - `SESSION_SECRET` (secret; generate a random value with at least 32 characters)
 
-The account owner must create the Cloudflare OAuth client and enter its Client ID and new Client Secret. The GitHub OAuth secret previously pasted into chat should be rotated before it is saved here.
+Each user supplies their own Cloudflare API token in the app. The GitHub OAuth secret previously pasted into chat should be rotated after testing.

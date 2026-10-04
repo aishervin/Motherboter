@@ -1,15 +1,28 @@
-import { json, readSession } from "../../_lib/github-session";
+import { expiredCookie, json, readSession } from "../../_lib/github-session";
 import type { PagesContext } from "../../_lib/github-session";
 
 export async function onRequestGet({ request, env }: PagesContext) {
-  if (!env.SESSION_SECRET || env.SESSION_SECRET.length < 32) return json({ error: "cloudflare_oauth_not_configured" }, 503);
+  if (!env.SESSION_SECRET || env.SESSION_SECRET.length < 32) return json({ error: "session_not_configured" }, 503);
   const token = await readSession(request, env.SESSION_SECRET, "cloudflare_session");
   if (!token) return json({ connected: false });
 
-  const response = await fetch("https://api.cloudflare.com/client/v4/accounts?page=1&per_page=50", {
-    headers: { accept: "application/json", authorization: `Bearer ${token}` },
-  });
-  const data = await response.json() as { success?: boolean; errors?: { message?: string }[]; result?: { id: string; name: string; type?: string }[] };
-  if (!response.ok || !data.success) return json({ error: data.errors?.[0]?.message || "cloudflare_account_check_failed" }, 502);
-  return json({ connected: true, accounts: data.result?.map(({ id, name, type }) => ({ id, name, type })) || [] });
+  let response: Response;
+  try {
+    response = await fetch("https://api.cloudflare.com/client/v4/accounts?page=1&per_page=50", {
+      headers: { accept: "application/json", authorization: `Bearer ${token}` },
+    });
+  } catch {
+    return json({ error: "cloudflare_connection_failed" }, 502);
+  }
+  const data = await response.json().catch(() => null) as { success?: boolean; result?: { id: string; name: string; type?: string }[] } | null;
+  if (!response.ok || !data?.success || !data.result?.length) {
+    if (response.status === 401 || response.status === 403 || (data?.success && !data.result?.length)) {
+      const headers = new Headers();
+      headers.append("set-cookie", expiredCookie("cloudflare_session", "/api/"));
+      const error = data?.success ? "cloudflare_no_accounts" : "cloudflare_token_invalid_or_permission_missing";
+      return json({ connected: false, error }, 403, headers);
+    }
+    return json({ error: "cloudflare_connection_failed" }, 502);
+  }
+  return json({ connected: true, accounts: data.result.map(({ id, name, type }) => ({ id, name, type })) });
 }
