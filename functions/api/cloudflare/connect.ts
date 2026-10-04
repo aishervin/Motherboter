@@ -33,7 +33,7 @@ export async function onRequestPost({ request, env }: PagesContext) {
   }
   const data = await response.json().catch(() => null) as CloudflareResponse | null;
   if (!response.ok || !data?.success) {
-    const authFailure = response.status === 401 || response.status === 403 || data?.errors?.some(error => [9106, 9109, 10000].includes(Number(error.code)));
+    const authFailure = [400, 401, 403].includes(response.status) || data?.errors?.some(error => [6003, 9106, 9109, 10000].includes(Number(error.code)));
     return json({ error: authFailure ? "cloudflare_token_invalid_or_permission_missing" : "cloudflare_connection_failed" }, authFailure ? 403 : 502);
   }
 

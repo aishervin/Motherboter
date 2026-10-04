@@ -14,9 +14,10 @@ export async function onRequestGet({ request, env }: PagesContext) {
   } catch {
     return json({ error: "cloudflare_connection_failed" }, 502);
   }
-  const data = await response.json().catch(() => null) as { success?: boolean; result?: { id: string; name: string; type?: string }[] } | null;
+  const data = await response.json().catch(() => null) as { success?: boolean; errors?: { code?: number | string }[]; result?: { id: string; name: string; type?: string }[] } | null;
   if (!response.ok || !data?.success || !data.result?.length) {
-    if (response.status === 401 || response.status === 403 || (data?.success && !data.result?.length)) {
+    const authFailure = [400, 401, 403].includes(response.status) || data?.errors?.some(error => [6003, 9106, 9109, 10000].includes(Number(error.code)));
+    if (authFailure || (data?.success && !data.result?.length)) {
       const headers = new Headers();
       headers.append("set-cookie", expiredCookie("cloudflare_session", "/api/"));
       const error = data?.success ? "cloudflare_no_accounts" : "cloudflare_token_invalid_or_permission_missing";
