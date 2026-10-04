@@ -139,7 +139,7 @@ export default function Motherboter() {
       try { parsed = JSON.parse(raw); } catch { parsed = { message: raw }; }
       const answer = parsed.message || "پاسخ ایجنت خالی بود.";
       apiMessage(answer, parsed.blocks);
-       setThread(previous => [...previous, { role: "user", parts: userParts }, { role: "model", parts: [{ text: answer }] }].slice(-20));
+       setThread(previous => [...previous, { role: "user" as const, parts: userParts }, { role: "model" as const, parts: [{ text: answer }] }].slice(-20));
       addLog("پاسخ Gemini دریافت شد.", "ok");
     } catch (error) {
       const text = error instanceof Error ? error.message : "خطای ناشناخته";
