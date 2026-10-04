@@ -2,26 +2,34 @@ import { useEffect, useRef, useState } from "react";
 import { Activity, AlertCircle, Bot, Check, ChevronDown, CircleHelp, Cloud, Database, FileCode2, Github, KeyRound, LoaderCircle, LockKeyhole, Paperclip, Plus, Send, Settings2, Shield, Sparkles, Terminal, X } from "lucide-react";
 import "./Motherboter.css";
 
-type Credentials = { gemini: string; github: string; cloudflare: string; accountId: string; telegram: string; custom: { name: string; value: string }[] };
+type Credentials = { gemini: string; accountId: string; telegram: string; custom: { name: string; value: string }[] };
+type GitHubUser = { login: string; name: string | null; avatar_url: string };
+type CloudflareAccount = { id: string; name: string; type?: string };
 type Block = { type: "code" | "terminal" | "deploy" | "simulator"; title?: string; filename?: string; code?: string; command?: string; logs?: string[]; repoName?: string; summary?: string; botName?: string; welcome?: string };
 type Message = { id: string; role: "user" | "assistant"; text: string; blocks?: Block[] };
 const KEY = "motherboter.credentials.v1";
 const MODEL = "gemini-3.8-flash";
 const INITIAL_CODE = `import { Bot, webhookCallback } from "grammy";\n\ntype Env = { BOT_TOKEN: string };\n\nexport default {\n  async fetch(request: Request, env: Env): Promise<Response> {\n    if (!env.BOT_TOKEN) return new Response("BOT_TOKEN is not configured", { status: 500 });\n    const bot = new Bot(env.BOT_TOKEN);\n    bot.command("start", ctx => ctx.reply("سلام! ربات آمادهٔ خدمت است."));\n    bot.command("help", ctx => ctx.reply("راهنمای ربات"));\n    return webhookCallback(bot, "cloudflare-mod")(request);\n  },\n};`;
-const emptyKeys: Credentials = { gemini: "", github: "", cloudflare: "", accountId: "", telegram: "", custom: [] };
+const emptyKeys: Credentials = { gemini: "", accountId: "", telegram: "", custom: [] };
 const stages = ["نیازمندی", "مخزن GitHub", "تولید کد", "Cloudflare", "Webhook", "آمادهٔ اجرا"];
 
 function loadKeys(): Credentials {
-  try { return { ...emptyKeys, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch { return emptyKeys; }
+  try {
+    const stored = JSON.parse(localStorage.getItem(KEY) || "{}") as Record<string, unknown>;
+    if ("github" in stored || "cloudflare" in stored) { delete stored.github; delete stored.cloudflare; localStorage.setItem(KEY, JSON.stringify(stored)); }
+    return { ...emptyKeys, ...stored } as Credentials;
+  } catch { return emptyKeys; }
 }
 function id() { return Math.random().toString(36).slice(2, 10); }
 
 export default function Motherboter() {
   const [keys, setKeys] = useState<Credentials>(loadKeys);
+  const [githubUser, setGithubUser] = useState<GitHubUser | null>(null);
+  const [cloudflareAccounts, setCloudflareAccounts] = useState<CloudflareAccount[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customValue, setCustomValue] = useState("");
-  const [repoName, setRepoName] = useState("motherbot");
+  const [repoName, setRepoName] = useState(() => sessionStorage.getItem("motherboter.repoName") || "motherbot");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,18 +37,64 @@ export default function Motherboter() {
   const [logs, setLogs] = useState<{ text: string; tone: string; time: string }[]>([{ text: "استودیو آماده است؛ توضیح ربات را بنویس.", tone: "info", time: new Date().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) }]);
   const [sourceName, setSourceName] = useState("");
   const [sourceContext, setSourceContext] = useState("");
-  const [code, setCode] = useState(INITIAL_CODE);
+  const [code, setCode] = useState(() => sessionStorage.getItem("motherboter.sourceCode") || INITIAL_CODE);
   const [testStatus, setTestStatus] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const [thread, setThread] = useState<{ role: "user" | "model"; parts: { text: string }[] }[]>([]);
 
   useEffect(() => { localStorage.setItem(KEY, JSON.stringify(keys)); }, [keys]);
+  useEffect(() => { sessionStorage.setItem("motherboter.repoName", repoName); }, [repoName]);
+  useEffect(() => { sessionStorage.setItem("motherboter.sourceCode", code); }, [code]);
   useEffect(() => { logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }); }, [logs]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages, loading]);
 
   const addLog = (text: string, tone = "info") => setLogs(items => [...items, { text, tone, time: new Date().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) }]);
   const updateKey = (field: keyof Credentials, value: string) => setKeys(current => ({ ...current, [field]: value }));
+  useEffect(() => {
+    let active = true;
+    const status = new URLSearchParams(window.location.search).get("github");
+    const cloudflareStatus = new URLSearchParams(window.location.search).get("cloudflare");
+    if (status) {
+      const messages: Record<string, string> = {
+        connected: "ورود امن GitHub انجام شد.",
+        denied: "اتصال GitHub لغو شد.",
+        "state-error": "اعتبارسنجی OAuth ناموفق بود؛ دوباره تلاش کن.",
+        "token-error": "GitHub نتوانست نشست OAuth بسازد.",
+        "not-configured": "تنظیمات OAuth در Cloudflare کامل نشده است.",
+      };
+      addLog(messages[status] || "پاسخ OAuth دریافت شد.", status === "connected" ? "ok" : "warn");
+    }
+    if (cloudflareStatus) {
+      const messages: Record<string, string> = {
+        connected: "ورود امن Cloudflare انجام شد.",
+        denied: "اتصال Cloudflare لغو شد.",
+        "state-error": "اعتبارسنجی Cloudflare OAuth ناموفق بود.",
+        "token-error": "Cloudflare نتوانست نشست OAuth بسازد.",
+        "not-configured": "تنظیمات OAuth کلودفلر هنوز کامل نیست.",
+      };
+      addLog(messages[cloudflareStatus] || "پاسخ OAuth کلودفلر دریافت شد.", cloudflareStatus === "connected" ? "ok" : "warn");
+    }
+    if (status || cloudflareStatus) window.history.replaceState({}, "", window.location.pathname);
+    void fetch("/api/github/session", { credentials: "same-origin" })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (!active || !data?.connected) return;
+        setGithubUser(data.user);
+        const pending = sessionStorage.getItem("motherboter.pendingRepo");
+        if (pending) {
+          sessionStorage.removeItem("motherboter.pendingRepo");
+          const request = JSON.parse(pending) as { name?: string };
+          if (request.name) void createRepository({ type: "code", repoName: request.name }, true);
+        }
+      })
+      .catch(() => {});
+    void fetch("/api/cloudflare/session", { credentials: "same-origin" })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (active && data?.connected) setCloudflareAccounts(data.accounts || []); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
   const apiMessage = (answer: string, blocks?: Block[]) => {
     setMessages(current => [...current, { id: id(), role: "assistant", text: answer, blocks }]);
     const found = blocks?.find(block => block.type === "code" && block.code);
@@ -85,13 +139,24 @@ export default function Motherboter() {
 
   async function testGitHub() {
     setTestStatus("در حال بررسی GitHub…");
-    try { const r = await fetch("https://api.github.com/user", { headers: { Authorization: `Bearer ${keys.github.trim()}`, Accept: "application/vnd.github+json" } }); if (!r.ok) throw new Error(`HTTP ${r.status}`); const user = await r.json(); setTestStatus(`GitHub متصل: @${user.login}`); addLog(`اتصال GitHub برای @${user.login} تأیید شد.`, "ok"); }
-    catch (e) { setTestStatus(`GitHub: ${e instanceof Error ? e.message : "خطا"}`); addLog("بررسی GitHub شکست خورد.", "error"); }
+    try {
+      const response = await fetch("/api/github/session", { credentials: "same-origin" });
+      const result = await response.json();
+      if (!response.ok || !result.connected) throw new Error(result.error || "ابتدا GitHub را وصل کن.");
+      setGithubUser(result.user); setTestStatus(`GitHub متصل: @${result.user.login}`); addLog(`اتصال امن GitHub برای @${result.user.login} تأیید شد.`, "ok");
+    } catch (error) { const text = error instanceof Error ? error.message : "خطا"; setTestStatus(`GitHub: ${text}`); addLog(`بررسی GitHub: ${text}`, "error"); }
   }
   async function testCloudflare() {
     setTestStatus("در حال بررسی Cloudflare…");
-    try { const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${keys.accountId.trim()}`, { headers: { Authorization: `Bearer ${keys.cloudflare.trim()}` } }); const data = await r.json(); if (!r.ok || !data.success) throw new Error(data.errors?.[0]?.message || `HTTP ${r.status}`); setTestStatus(`Cloudflare متصل: ${data.result?.name || "حساب تأیید شد"}`); addLog("اتصال Cloudflare تأیید شد.", "ok"); }
-    catch (e) { setTestStatus(`Cloudflare: ${e instanceof Error ? e.message : "خطا"}`); addLog("بررسی Cloudflare شکست خورد.", "error"); }
+    try {
+      const response = await fetch("/api/cloudflare/session", { credentials: "same-origin" });
+      const result = await response.json();
+      if (!response.ok || !result.connected) throw new Error(result.error || "ابتدا Cloudflare را وصل کن.");
+      const accounts = result.accounts as CloudflareAccount[];
+      setCloudflareAccounts(accounts);
+      if (!keys.accountId && accounts[0]) updateKey("accountId", accounts[0].id);
+      setTestStatus(`Cloudflare متصل: ${accounts.length} حساب`); addLog(`اتصال امن Cloudflare با ${accounts.length} حساب تأیید شد.`, "ok");
+    } catch (error) { const text = error instanceof Error ? error.message : "خطا"; setTestStatus(`Cloudflare: ${text}`); addLog(`بررسی Cloudflare: ${text}`, "error"); }
   }
   async function testGemini() {
     if (!keys.gemini.trim()) { setTestStatus("اول کلید Gemini را وارد کن."); return; }
@@ -103,38 +168,45 @@ export default function Motherboter() {
     } catch (error) { const text = error instanceof Error ? error.message : "خطا"; setTestStatus(`Gemini: ${text}`); addLog(`بررسی Gemini شکست خورد: ${text}`, "error"); }
   }
 
-  async function createRepository(block: Block) {
-    if (!keys.github.trim()) { setSettingsOpen(true); return; }
+  async function createRepository(block: Block, afterOAuth = false) {
+    if (!githubUser && !afterOAuth) {
+      sessionStorage.setItem("motherboter.pendingRepo", JSON.stringify({ name: repoName.trim() || block.repoName || "motherbot" }));
+      addLog("پس از تأیید GitHub، ساخت مخزن ادامه پیدا می‌کند.", "info");
+      connectGitHub();
+      return;
+    }
     const name = (repoName.trim() || block.repoName || "motherbot").replace(/[^a-zA-Z0-9._-]/g, "-");
     addLog(`ساخت مخزن خصوصی ${name}…`, "warn"); setStage(1);
     try {
-      const headers = { Authorization: `Bearer ${keys.github.trim()}`, Accept: "application/vnd.github+json", "Content-Type": "application/json", "X-GitHub-Api-Version": "2022-11-28" };
-      const userResponse = await fetch("https://api.github.com/user", { headers }); if (!userResponse.ok) throw new Error(`GitHub token: HTTP ${userResponse.status}`);
-      const user = await userResponse.json();
-      let created = await fetch("https://api.github.com/user/repos", { method: "POST", headers, body: JSON.stringify({ name, private: true, auto_init: true }) });
-      if (created.status === 422) { created = await fetch(`https://api.github.com/repos/${user.login}/${name}`, { headers }); if (!created.ok) throw new Error("مخزن هم‌نام وجود دارد اما قابل دسترسی نیست."); }
-      else if (!created.ok) throw new Error(`ساخت مخزن ناموفق بود: HTTP ${created.status}`);
-      addLog(`مخزن خصوصی ${user.login}/${name} آماده شد.`, "ok");
       const files: Record<string, string> = {
         "src/index.ts": code,
         "wrangler.toml": `name = "${name}"\nmain = "src/index.ts"\ncompatibility_date = "2026-09-01"\n\n[observability]\nenabled = true\n`,
         "package.json": JSON.stringify({ name, private: true, version: "0.1.0", scripts: { deploy: "wrangler deploy" }, dependencies: { grammy: "^1.35.0" }, devDependencies: { wrangler: "^4.0.0", typescript: "^5.0.0" } }, null, 2),
         "README.md": `# ${name}\n\nTelegram bot generated with Motherboter.\n\n## Deploy\n\nInstall dependencies and run npm run deploy. Configure the required bot settings before publishing.\n`
       };
-      for (const [path, content] of Object.entries(files)) {
-        const url = `https://api.github.com/repos/${user.login}/${name}/contents/${path}`;
-        const old = await fetch(url, { headers }); let sha: string | undefined;
-        if (old.ok) sha = (await old.json()).sha; else if (old.status !== 404) throw new Error(`خواندن ${path} شکست خورد: HTTP ${old.status}`);
-        const saved = await fetch(url, { method: "PUT", headers, body: JSON.stringify({ message: `feat: add ${path}`, content: btoa(unescape(encodeURIComponent(content))), ...(sha ? { sha } : {}) }) });
-        if (!saved.ok) throw new Error(`ثبت ${path} ناموفق بود: HTTP ${saved.status}`);
-        addLog(`${path} در GitHub ثبت شد.`, "ok");
-      }
-      setStage(2); setMessages(current => [...current, { id: id(), role: "assistant", text: `مخزن خصوصی ساخته و فایل‌های اولیه ثبت شد: https://github.com/${user.login}/${name}\n\nاین مرحله فقط مخزن و سورس را ایجاد کرد؛ Worker و webhook هنوز deploy نشده‌اند.` }]);
+      const response = await fetch("/api/github/repos", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, files }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `GitHub API ${response.status}`);
+      addLog(`مخزن خصوصی ${result.fullName} آماده شد.`, "ok");
+      addLog(`${result.filesWritten} فایل در GitHub ثبت شد.`, "ok");
+      setStage(2); setMessages(current => [...current, { id: id(), role: "assistant", text: `مخزن خصوصی ساخته و فایل‌های اولیه ثبت شد: ${result.repository}\n\nWorker و webhook هنوز deploy نشده‌اند.` }]);
     } catch (error) { const text = error instanceof Error ? error.message : "خطا"; addLog(text, "error"); setMessages(current => [...current, { id: id(), role: "assistant", text: `ساخت مخزن کامل نشد: ${text}` }]); }
   }
 
+  async function disconnectGitHub() {
+    await fetch("/auth/github/logout", { method: "POST", credentials: "same-origin" });
+    setGithubUser(null); setTestStatus("اتصال GitHub قطع شد."); addLog("نشست GitHub از این مرورگر حذف شد.", "info");
+  }
+
+  async function disconnectCloudflare() {
+    await fetch("/auth/cloudflare/logout", { method: "POST", credentials: "same-origin" });
+    setCloudflareAccounts([]); setTestStatus("اتصال Cloudflare قطع شد."); addLog("نشست Cloudflare از این مرورگر حذف شد.", "info");
+  }
+
   function addCustomKey() { if (!customName.trim() || !customValue.trim()) return; setKeys(current => ({ ...current, custom: [...current.custom, { name: customName.trim(), value: customValue.trim() }] })); setCustomName(""); setCustomValue(""); }
-  const keyState = (key: keyof Credentials) => Boolean(keys[key]);
+  const keyState = (key: keyof Credentials | "github" | "cloudflare") => key === "github" ? Boolean(githubUser) : key === "cloudflare" ? cloudflareAccounts.length > 0 : Boolean(keys[key]);
+  const connectGitHub = () => { sessionStorage.setItem("motherboter.repoName", repoName); sessionStorage.setItem("motherboter.sourceCode", code); window.location.assign("/auth/github"); };
+  const connectCloudflare = () => { sessionStorage.setItem("motherboter.repoName", repoName); sessionStorage.setItem("motherboter.sourceCode", code); window.location.assign("/auth/cloudflare"); };
 
   return <div className="mb-app" dir="rtl">
     <aside className="mb-side"><a className="mb-brand" href="#"><span className="mb-brand-mark">M</span><span><b>Motherboter</b><small>استودیوی ساخت ربات تلگرام</small></span></a>
@@ -157,10 +229,10 @@ export default function Motherboter() {
             <section className="mb-card mb-test"><header><b>بررسی اتصال</b><CircleHelp size={13}/></header><div>{testStatus || "کلیدها را اضافه کن و اتصال را بیازمای."}</div><div className="mb-test-buttons"><button onClick={testGitHub}><Github size={12}/> تست GitHub</button><button onClick={testCloudflare}><Cloud size={12}/> تست Cloudflare</button></div></section></aside>
         </div></div></div>
     </main>
-    {settingsOpen && <div className="mb-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setSettingsOpen(false); }}><section className="mb-modal"><header><div><KeyRound size={16}/><b>بانک کلیدها و اتصال سرویس‌ها</b></div><button onClick={() => setSettingsOpen(false)} aria-label="بستن"><X size={17}/></button></header><p>کلیدها در مرورگر ذخیره می‌شوند. برای شروع، هر سرویس را اضافه و اتصالش را تست کن.</p>
+    {settingsOpen && <div className="mb-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setSettingsOpen(false); }}><section className="mb-modal"><header><div><KeyRound size={16}/><b>بانک کلیدها و اتصال سرویس‌ها</b></div><button onClick={() => setSettingsOpen(false)} aria-label="بستن"><X size={17}/></button></header><p>کلیدهای دیگر محلی‌اند؛ نشست GitHub با OAuth و به‌صورت رمزگذاری‌شده روی سرور نگه‌داری می‌شود.</p>
       <Credential label="Gemini API Key" value={keys.gemini} onChange={value => updateKey("gemini", value)} href="https://aistudio.google.com/app/apikey" hint="دریافت کلید ↗"/>
-      <Credential label="GitHub Personal Access Token" value={keys.github} onChange={value => updateKey("github", value)} href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=Motherboter" hint="ساخت توکن ↗"/>
-      <Credential label="Cloudflare API Token" value={keys.cloudflare} onChange={value => updateKey("cloudflare", value)} href="https://dash.cloudflare.com/profile/api-tokens" hint="ساخت توکن ↗"/>
+       <div className="mb-github-auth">{githubUser ? <div className="mb-github-connected"><img src={githubUser.avatar_url} alt=""/><span>متصل به <b dir="ltr">@{githubUser.login}</b></span><button onClick={() => void disconnectGitHub()}>خروج</button></div> : <button className="mb-github-connect" onClick={connectGitHub}><Github size={15}/> اتصال امن با GitHub</button>}<small>توکن در مرورگر نمایش داده نمی‌شود؛ خروج، نشست همین مرورگر را پاک می‌کند.</small></div>
+       <div className="mb-github-auth">{cloudflareAccounts.length ? <><div className="mb-github-connected"><Cloud size={16}/><span>اتصال امن Cloudflare</span><button onClick={() => void disconnectCloudflare()}>خروج</button></div><label className="mb-credential"><span>حساب Cloudflare</span><select value={keys.accountId} onChange={event => updateKey("accountId", event.target.value)}>{cloudflareAccounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label></> : <button className="mb-github-connect" onClick={connectCloudflare}><Cloud size={15}/> اتصال امن با Cloudflare</button>}<small>دسترسی‌ها را در صفحهٔ مجوز Cloudflare مرور و تأیید می‌کنی.</small></div>
       <Credential label="Cloudflare Account ID" value={keys.accountId} onChange={value => updateKey("accountId", value)} hint="از داشبورد Cloudflare"/>
       <Credential label="Telegram Bot Token · BotFather" value={keys.telegram} onChange={value => updateKey("telegram", value)} href="https://t.me/BotFather" hint="بازکردن BotFather ↗"/>
       <div className="mb-custom"><div className="mb-modal-label">کلید سرویس دلخواه</div><div><input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="نام سرویس"/><input value={customValue} onChange={e => setCustomValue(e.target.value)} placeholder="API key" type="password"/><button onClick={addCustomKey}><Plus size={13}/></button></div></div>
