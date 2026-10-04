@@ -20,8 +20,8 @@
 @keyframes agent-pulse{50%{opacity:.4}}
 .mb-scroll{flex:1;min-height:0;overflow:hidden}
 .mb-page{width:min(100%,980px);height:100%;min-height:0;margin:0 auto;padding:18px clamp(14px,3.4vw,34px) 0;display:flex}
-.mb-grid{width:100%;height:100%;min-height:0;display:flex;gap:0}
-.mb-left{width:100%;min-width:0;min-height:0;display:flex;flex-direction:column}
+.mb-grid{width:100%;height:100%;min-height:0;display:flex;align-items:stretch;gap:0}
+.mb-left{width:100%;height:100%;min-width:0;min-height:0;display:flex;flex-direction:column}
 .mb-chat{height:100%;min-height:0;display:flex;flex-direction:column;gap:0;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
 .mb-card-head{display:none!important}
 .mb-messages{flex:1;min-height:0;max-height:none;overflow-y:auto!important;overscroll-behavior:contain;padding:3px 0 18px!important;display:flex;flex-direction:column;gap:17px;scrollbar-color:#394236 transparent;scrollbar-width:thin}
@@ -43,7 +43,7 @@
 @keyframes agent-spin{to{transform:rotate(360deg)}}
 .mb-compose-wrap{position:relative;z-index:1;flex:none;padding:13px 0 max(12px,env(safe-area-inset-bottom));border-top:1px solid #262d25;background:linear-gradient(180deg,rgba(17,20,16,.94),#111410 34%)}
 .mb-compose{width:100%;max-width:840px;margin:0 auto;padding:11px 12px 9px;border:1px solid #394236;border-radius:16px;background:#191d19;box-shadow:0 10px 34px #0003}
-.mb-compose textarea{display:block;width:100%;min-height:62px;max-height:180px;padding:4px 2px 10px;resize:vertical;border:0;outline:none;background:transparent;color:#eef2e9;font-size:13px;line-height:1.8}
+.mb-compose textarea{display:block;width:100%;min-height:62px;max-height:180px;padding:4px 2px 10px;resize:none;border:0;outline:none;background:transparent;color:#eef2e9;font-size:13px;line-height:1.8}
 .mb-compose textarea::placeholder{color:#778273}
 .mb-compose textarea:focus-visible{outline:none}
 .mb-compose-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
